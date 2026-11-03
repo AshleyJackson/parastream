@@ -20,6 +20,17 @@ export {
   type StreamTransport,
 } from "./normalize-stream.js";
 export {
+  normalizeAIReadableStream,
+  partFilterOptionsSchema,
+  partFilterTransform,
+  segmentTextTransform,
+  selectTextTransform,
+  textSelectionOptionsSchema,
+  type PartFilterOptions,
+  type TextChannel,
+  type TextSelectionOptions,
+} from "./web-streams.js";
+export {
   detectResponseProtocol,
   normalizeResponseEvent,
   normalizedPartSchema,

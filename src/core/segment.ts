@@ -119,6 +119,94 @@ function formatUnit(
   return options.includeDelimiter ? text + delimiter : text;
 }
 
+export interface TextSegmenter {
+  push(chunk: string): ParaChunk[];
+  finish(): ParaChunk | undefined;
+}
+
+export function createTextSegmenter(
+  inputOptions: SegmentOptions = {},
+): TextSegmenter {
+  const options = segmentOptionsSchema.parse(inputOptions);
+  let pieces: string[] = [];
+  let pendingLength = 0;
+  let tail = "";
+  let index = 0;
+
+  return {
+    push(chunk: string): ParaChunk[] {
+      const text = textChunkSchema.parse(chunk);
+      if (text.length === 0) return [];
+
+      const output: ParaChunk[] = [];
+      let pieceStart = 0;
+
+      for (let offset = 0; offset < text.length; offset += 1) {
+        tail = (tail + text[offset]).slice(-4);
+        const delimiterLength = delimiterLengthAtTail(tail, options.unit);
+
+        if (delimiterLength > 0) {
+          const piece = text.slice(pieceStart, offset + 1);
+          pieces.push(piece);
+          pendingLength += piece.length;
+
+          const unitLength = pendingLength - delimiterLength;
+          if (unitLength > options.maxBuffer) {
+            throw new RangeError(
+              `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
+            );
+          }
+
+          const full = pieces.join("");
+          const unit = full.slice(0, unitLength);
+          const delimiter = full.slice(unitLength);
+          output.push({
+            text: formatUnit(unit, delimiter, options),
+            index,
+            unit: options.unit,
+            isFinal: false,
+          });
+          index += 1;
+          pieces = [];
+          pendingLength = 0;
+          tail = "";
+          pieceStart = offset + 1;
+          continue;
+        }
+
+        const currentLength = pendingLength + offset - pieceStart + 1;
+        if (currentLength > options.maxBuffer) {
+          throw new RangeError(
+            `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
+          );
+        }
+      }
+
+      if (pieceStart < text.length) {
+        const remainder = text.slice(pieceStart);
+        pieces.push(remainder);
+        pendingLength += remainder.length;
+      }
+
+      return output;
+    },
+    finish(): ParaChunk | undefined {
+      if (pendingLength === 0) return undefined;
+      const chunk: ParaChunk = {
+        text: options.trim ? pieces.join("").trim() : pieces.join(""),
+        index,
+        unit: options.unit,
+        isFinal: true,
+      };
+      pieces = [];
+      pendingLength = 0;
+      tail = "";
+      index += 1;
+      return chunk;
+    },
+  };
+}
+
 export async function* parastreamChunks(
   inputSource: TextSource,
   inputOptions: SegmentOptions = {},
@@ -126,70 +214,14 @@ export async function* parastreamChunks(
   const options = segmentOptionsSchema.parse(inputOptions);
   const source = textSourceSchema.parse(inputSource);
   throwIfAborted(options.signal);
-  let pieces: string[] = [];
-  let pendingLength = 0;
-  let tail = "";
-  let index = 0;
+  const segmenter = createTextSegmenter(options);
 
   for await (const chunk of textChunks(source, options.signal)) {
-    let pieceStart = 0;
-
-    for (let offset = 0; offset < chunk.length; offset += 1) {
-      tail = (tail + chunk[offset]).slice(-4);
-      const delimiterLength = delimiterLengthAtTail(tail, options.unit);
-
-      if (delimiterLength > 0) {
-        const piece = chunk.slice(pieceStart, offset + 1);
-        pieces.push(piece);
-        pendingLength += piece.length;
-
-        const unitLength = pendingLength - delimiterLength;
-        if (unitLength > options.maxBuffer) {
-          throw new RangeError(
-            `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
-          );
-        }
-
-        const full = pieces.join("");
-        const unit = full.slice(0, unitLength);
-        const delimiter = full.slice(unitLength);
-        yield {
-          text: formatUnit(unit, delimiter, options),
-          index,
-          unit: options.unit,
-          isFinal: false,
-        };
-        index += 1;
-        pieces = [];
-        pendingLength = 0;
-        tail = "";
-        pieceStart = offset + 1;
-        continue;
-      }
-
-      const currentLength = pendingLength + offset - pieceStart + 1;
-      if (currentLength > options.maxBuffer) {
-        throw new RangeError(
-          `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
-        );
-      }
-    }
-
-    if (pieceStart < chunk.length) {
-      const remainder = chunk.slice(pieceStart);
-      pieces.push(remainder);
-      pendingLength += remainder.length;
-    }
+    yield* segmenter.push(chunk);
   }
 
-  if (pendingLength > 0) {
-    yield {
-      text: options.trim ? pieces.join("").trim() : pieces.join(""),
-      index,
-      unit: options.unit,
-      isFinal: true,
-    };
-  }
+  const finalChunk = segmenter.finish();
+  if (finalChunk !== undefined) yield finalChunk;
 }
 
 export async function* parastream(
