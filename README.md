@@ -18,12 +18,12 @@ The library is protocol-aware, not model-name-aware. It recognizes response enve
 
 ```sh
 bun install
-bun test
+bun run test
 bun run typecheck
 bun run build
 ```
 
-All automated tests live under `tests/`. See [the docs index](docs/README.md) for architecture, protocol detection, research references, testing, and ADRs.
+All automated tests live under `tests/`. `bun run test` includes a visual stream playback: output-message text appears only after paragraph boundaries, while tool and agent activity prints immediately. See [the docs index](docs/README.md) for architecture, protocol detection, research references, testing, and ADRs.
 
 ## Quick start
 
