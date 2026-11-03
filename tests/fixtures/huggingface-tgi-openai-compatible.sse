@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-tgi-demo","object":"chat.completion.chunk","created":1730000000,"model":"meta-llama/demo","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello from TGI."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-tgi-demo","object":"chat.completion.chunk","created":1730000000,"model":"meta-llama/demo","choices":[{"index":0,"delta":{"content":" TGI."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-tgi-demo","object":"chat.completion.chunk","created":1730000000,"model":"meta-llama/demo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

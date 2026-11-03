@@ -1,0 +1,5 @@
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"Hello from Gemini."}]},"finishReason":null}]}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"A short thought.","thought":true}]},"finishReason":null}]}
+
+data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{"query":"weather"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":8}}

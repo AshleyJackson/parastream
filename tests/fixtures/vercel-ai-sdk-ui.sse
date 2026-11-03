@@ -1,0 +1,15 @@
+data: {"type":"start","messageId":"msg_demo"}
+
+data: {"type":"text-start","id":"text-1"}
+
+data: {"type":"text-delta","id":"text-1","delta":"Hello from the AI SDK UI."}
+
+data: {"type":"text-end","id":"text-1"}
+
+data: {"type":"tool-input-start","toolCallId":"tool-demo","toolName":"lookup"}
+
+data: {"type":"tool-input-delta","toolCallId":"tool-demo","inputTextDelta":"{\"query\":"}
+
+data: {"type":"data-usage","data":{"inputTokens":5,"outputTokens":8}}
+
+data: {"type":"finish"}

@@ -1,0 +1,10 @@
+[
+  {"messageStart":{"role":"assistant"}},
+  {"contentBlockStart":{"contentBlockIndex":0,"start":{"toolUse":{"toolUseId":"tool-demo","name":"lookup"}}}},
+  {"contentBlockDelta":{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{\"query\":"}}}},
+  {"contentBlockDelta":{"contentBlockIndex":1,"delta":{"text":"Hello from Bedrock."}}},
+  {"contentBlockDelta":{"contentBlockIndex":2,"delta":{"reasoningContent":{"reasoningText":{"text":"A short thought."}}}}},
+  {"contentBlockStop":{"contentBlockIndex":0}},
+  {"messageStop":{"stopReason":"end_turn"}},
+  {"metadata":{"usage":{"inputTokens":5,"outputTokens":8},"metrics":{"latencyMs":42}}}
+]

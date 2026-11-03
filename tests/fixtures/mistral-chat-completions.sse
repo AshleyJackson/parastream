@@ -1,0 +1,5 @@
+data: {"id":"cmpl-demo","object":"chat.completion.chunk","created":1730000000,"model":"mistral-demo","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello from Mistral."},"finish_reason":null}]}
+
+data: {"id":"cmpl-demo","object":"chat.completion.chunk","created":1730000000,"model":"mistral-demo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

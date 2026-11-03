@@ -1,0 +1,5 @@
+{"type":"text-delta","text":"Hello from the AI SDK."}
+{"type":"reasoning-delta","text":"A short thought."}
+{"type":"tool-call","toolCallId":"tool-demo","toolName":"lookup","input":{"query":"weather"}}
+{"type":"tool-call-delta","toolCallId":"tool-demo","toolName":"lookup","argsTextDelta":"{\"query\":"}
+{"type":"finish-step","finishReason":"tool-calls"}

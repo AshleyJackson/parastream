@@ -1,0 +1,4 @@
+{"model":"qwen-demo","created_at":"2026-11-03T12:00:00Z","message":{"role":"assistant","content":"Hello from Ollama."},"done":false}
+{"model":"qwen-demo","created_at":"2026-11-03T12:00:00Z","message":{"role":"assistant","thinking":"A short thought."},"done":false}
+{"model":"qwen-demo","created_at":"2026-11-03T12:00:00Z","message":{"role":"assistant","tool_calls":[{"function":{"name":"lookup","arguments":{"query":"weather"}}}]},"done":false}
+{"model":"qwen-demo","created_at":"2026-11-03T12:00:00Z","message":{"role":"assistant","content":""},"done":true,"total_duration":123456}

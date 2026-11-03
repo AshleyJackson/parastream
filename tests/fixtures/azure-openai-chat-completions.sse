@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-azure-demo","object":"chat.completion.chunk","created":1730000000,"model":"gpt-demo","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello from Azure OpenAI."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-azure-demo","object":"chat.completion.chunk","created":1730000000,"model":"gpt-demo","choices":[],"prompt_filter_results":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":false,"severity":"safe"}}}]}
+
+data: {"id":"chatcmpl-azure-demo","object":"chat.completion.chunk","created":1730000000,"model":"gpt-demo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

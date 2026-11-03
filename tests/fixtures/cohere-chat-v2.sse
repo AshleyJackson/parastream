@@ -1,0 +1,15 @@
+data: {"type":"message-start","id":"msg_demo","message":{"role":"assistant","content":[]}}
+
+data: {"type":"content-start","index":0,"content_start":{"type":"text","text":""}}
+
+data: {"type":"content-delta","index":0,"delta":{"message":{"content":{"text":"Hello from Cohere."}}}}
+
+data: {"type":"content-end","index":0}
+
+data: {"type":"tool-call-start","index":0,"id":"tool_demo","tool_call":{"id":"tool_demo","type":"function","function":{"name":"lookup","arguments":""}}}
+
+data: {"type":"tool-call-delta","index":0,"delta":{"message":{"tool_calls":{"function":{"arguments":"{\"query\":"}}}}}
+
+data: {"type":"tool-call-end","index":0}
+
+data: {"type":"message-end","id":"msg_demo","finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":5,"output_tokens":8}}}
