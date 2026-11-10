@@ -47,6 +47,8 @@ export const normalizedPartSchema = z.discriminatedUnion("kind", [
     toolCallId: z.string().optional(),
     toolName: z.string().optional(),
     blockId: blockIdSchema.optional(),
+    /** Complete input when the provider supplies it on this call. */
+    input: z.unknown().optional(),
   }),
   normalizedBaseSchema.extend({
     kind: z.literal("control"),
@@ -397,6 +399,7 @@ interface ToolIdentity {
   toolCallId?: string | undefined;
   toolName?: string | undefined;
   blockId?: string | number | undefined;
+  input?: unknown;
 }
 
 function makeToolCall(
@@ -411,6 +414,7 @@ function makeToolCall(
     ...(identity.toolCallId === undefined ? {} : { toolCallId: identity.toolCallId }),
     ...(identity.toolName === undefined ? {} : { toolName: identity.toolName }),
     ...(identity.blockId === undefined ? {} : { blockId: identity.blockId }),
+    ...(identity.input === undefined ? {} : { input: identity.input }),
   });
 }
 
@@ -665,6 +669,7 @@ function normalizeGemini(record: JsonRecord, raw: unknown): NormalizedPart[] {
               toolCallId: stringField(functionCall ?? {}, "id"),
               toolName: stringField(functionCall ?? {}, "name"),
               blockId,
+              input: functionCall?.args,
             }),
           );
         } else {
@@ -707,6 +712,7 @@ function normalizeOllamaChat(record: JsonRecord, raw: unknown): NormalizedPart[]
       output.push(
         makeToolCall("ollama-chat", raw, {
           toolName: stringField(fn ?? {}, "name"),
+          input: fn?.arguments,
         }),
       );
     }
@@ -757,6 +763,7 @@ function normalizeAiSdk(record: JsonRecord, raw: unknown): NormalizedPart[] {
       makeToolCall("ai-sdk", raw, {
         toolCallId: stringField(record, "toolCallId"),
         toolName: stringField(record, "toolName"),
+        input: "input" in record ? record.input : record.args,
       }),
     ];
   }

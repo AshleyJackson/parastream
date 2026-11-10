@@ -28,7 +28,7 @@
     "build": "bun run scripts/clean-dist.ts && tsc -p tsconfig.build.json",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test:unit": "bun test ./tests/protocols.test.ts ./tests/provider-fixtures.test.ts ./tests/segment.test.ts ./tests/transports.test.ts ./tests/web-streams.test.ts",
+    "test:unit": "bun test ./tests/assembler.test.ts ./tests/protocols.test.ts ./tests/provider-fixtures.test.ts ./tests/segment.test.ts ./tests/transports.test.ts ./tests/web-streams.test.ts",
     "test:visual": "bun test ./tests/visual-stream.test.ts",
     "test": "bun run test:unit && bun run test:visual",
     "check": "bun run typecheck && bun run test:unit"

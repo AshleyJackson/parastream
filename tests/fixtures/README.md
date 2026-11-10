@@ -15,6 +15,7 @@ The provider-fixture tests run each event stream through transport framing and n
 | `bedrock-converse-sdk-events.json` | SDK-decoded Bedrock ConverseStream union events | [Bedrock ConverseStream](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html) |
 | `vercel-ai-sdk-core.jsonl` | Vercel AI SDK core stream parts | [AI SDK `streamText`](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) |
 | `vercel-ai-sdk-ui.sse` | Vercel AI SDK UI SSE data-stream parts | [AI SDK UI stream protocol](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) |
+| `assembler-ai-sdk.jsonl`, `assembler-anthropic.sse`, `assembler-openai-responses.jsonl` | Synthetic interleaving, tool completion, and step-reset sequences for assembly | References for the corresponding providers above |
 | `mistral-chat-completions.sse` | Mistral Chat Completions-compatible chunks | [Mistral Chat](https://docs.mistral.ai/api/endpoint/chat) |
 | `azure-openai-chat-completions.sse` | Azure Chat Completions chunks and moderation annotation | [Azure content streaming](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/content-streaming) |
 | `huggingface-tgi-openai-compatible.sse` | TGI OpenAI-compatible Chat Completions chunks | [TGI streaming](https://huggingface.co/docs/text-generation-inference/conceptual/streaming) |

@@ -113,7 +113,41 @@ Identity fields are reported only where the provider supplies them, and the iden
 | Bedrock ConverseStream | `toolUseId`, name, `blockId` = `contentBlockIndex` | `blockId` = `contentBlockIndex` |
 | Vercel AI SDK | `toolCallId`, `toolName` | `toolCallId`, `toolName` |
 
-Tool arguments stay separate from prose in every family, because their shape differs: OpenAI, Anthropic, Cohere, Bedrock, and the AI SDK deliver partial argument strings, while Gemini and Ollama deliver complete argument objects and therefore produce `tool-call` parts without a preceding `tool-input-delta`.
+Tool arguments stay separate from prose in every family, because their shape differs: OpenAI, Anthropic, Cohere, Bedrock, and the AI SDK deliver partial argument strings, while Gemini and Ollama deliver complete argument objects and therefore produce `tool-call` parts without a preceding `tool-input-delta`. Complete input is exposed as `tool-call.input` when supplied by Gemini, Ollama, or an AI SDK tool-call part.
+
+## Assemble a message
+
+`createMessageAssembler(options?)` is a synchronous push reducer over `NormalizedPart`; it does not own or read a stream. `push(part)` returns ordered `AssemblerEvent[]`. `finish()` closes the assembler and reports unfinished tool calls; `cancel()` closes it without synthesizing completion. Both are terminal. `state` returns a detached snapshot and remains readable after closing.
+
+```ts
+const assembler = createMessageAssembler({ toolInput: "json" });
+for await (const part of normalizeAIStream(response)) {
+  for (const event of assembler.push(part)) handle(event);
+}
+for (const event of assembler.finish()) handle(event);
+console.log(assembler.state.text, assembler.state.textBlocks, assembler.state.toolCalls);
+```
+
+`text`, `reasoning`, and `refusal` are accumulated in arrival order. `textBlocks` separately groups text by protocol, channel, and `blockId`; absent IDs share one block per channel. The output text is not reconstructed by concatenating blocks, since blocks can interleave. `toolCalls` contain IDs when known, `inputText`, a status, and, in JSON mode after successful completion, parsed `input`.
+
+| Option | Default | Behavior |
+|---|---|---|
+| `channels` | all three | Select text channels to retain and emit |
+| `toolInput` | `"json"` | `"json"` parses at completion; `"text"` retains text without parsing; `"off"` retains no arguments |
+| `maxTextChars` | `2_000_000` | Total retained text across channels, measured in UTF-16 code units |
+| `maxToolInputChars` | `200_000` | Total retained serialized tool input across calls, measured in UTF-16 code units |
+| `maxEntries` | `10_000` | Maximum combined text blocks and tool calls; exceeding it always throws |
+| `onOverflow` | `"throw"` | Throw `RangeError`, or `"truncate-marked"` and mark the affected block/call and state |
+
+These limits bound retained content and entry counts, not arbitrary provider event/identifier sizes, transport buffers, JSON parsing allocations, or snapshots held by the caller. Aggregate text duplicates block content and a step checkpoint can temporarily duplicate state. Truncated tool input is never parsed or presented as complete; a `tool-input-error` reports `truncated`. Truncated text events contain only retained characters; inspect `state.truncated` and each block's `truncated` flag.
+
+Events include `text`, `tool-input`, `tool-call`, `tool-call-complete`, `tool-input-error`, `reset`, and `control`. `control` also carries unrecognized parts so consumers can inspect `raw`. JSON parse errors are events with reason `invalid-json`, not exceptions. A pending call at `finish()` has status and error reason `incomplete`; EOF alone does not prove success. The assembler recognizes tool completion from AI SDK `tool-input-end` or a complete tool-call input, OpenAI Responses argument-done, Anthropic block-stop, Cohere tool-call-end, Bedrock block-stop, and OpenAI Chat's `tool_calls` finish control. Full Gemini and Ollama inputs complete immediately. Completion is not a tool execution or a guarantee that the provider's stream succeeded; handle failure controls before acting.
+
+Tool correlation uses protocol plus block ID where present, otherwise tool call ID. OpenAI Responses uses its output index to bridge different call and item IDs. Provider IDs can be missing or insufficient: for example, Chat Completions tool indexes are not scoped by choice in the normalized model, so simultaneous tool calls from multiple choices cannot be reliably assembled; unidentified concurrent calls may also collide. Use raw events or separate streams when identity is ambiguous. A new AI SDK step starts a new tool identity scope.
+
+AI SDK `start-step`/`step-start` takes a checkpoint; `reset-step` restores that checkpoint and emits `reset` with a detached `state` snapshot. Without a checkpoint, it emits `reset` but does not change state. `finish-step` commits the checkpoint. Previously delivered events and external side effects cannot be undone: a consumer must retract them on `reset`, and should defer irreversible actions until its own policy permits them.
+
+`consume(source, handlers?, options?)` combines `normalizeAIStream` and an assembler and returns the final `MessageState`. Pass normalization options in `options.normalize` and assembler options in `options.assembler`. Handler names are `event` (all events), `text`, `toolInput`, `toolCall`, `toolCallComplete`, `toolInputError`, `reset`, and `control`. The generic handler runs before the specific handler; each is awaited in order, providing backpressure. A handler exception closes the upstream iterator and rejects `consume`; a normalization abort signal also stops consumption and rejects with its reason. An already-running handler is not forcibly interrupted: it must cooperate with cancellation itself. `consume` accepts the same sources as `normalizeAIStream`, not an iterable of already normalized parts; use the push reducer for those.
 
 ## Web Streams adapters
 

@@ -1,5 +1,17 @@
 export { abortSignalSchema } from "./abort.js";
 export {
+  createMessageAssembler,
+  messageAssemblerOptionsSchema,
+  type AssembledTextBlock,
+  type AssembledToolCall,
+  type AssemblerChannel,
+  type AssemblerEvent,
+  type MessageAssembler,
+  type MessageAssemblerOptions,
+  type MessageState,
+} from "./core/assembler.js";
+export { consume, type ConsumeHandlers, type ConsumeOptions } from "./consume.js";
+export {
   parastream,
   parastreamChunks,
   segmentOptionsSchema,

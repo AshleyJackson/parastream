@@ -1,0 +1,7 @@
+{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"item-0","call_id":"call-0","name":"alpha"}}
+{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"item-1","call_id":"call-1","name":"beta"}}
+{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"item-0","delta":"{\"a\":"}
+{"type":"response.function_call_arguments.delta","output_index":1,"item_id":"item-1","delta":"{\"b\":2}"}
+{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"item-0","delta":"1}"}
+{"type":"response.function_call_arguments.done","output_index":1,"item_id":"item-1","arguments":"{\"b\":2}"}
+{"type":"response.function_call_arguments.done","output_index":0,"item_id":"item-0","arguments":"{\"a\":1}"}

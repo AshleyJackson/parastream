@@ -49,6 +49,27 @@ for await (const paragraph of parastream(outputText())) {
 
 `normalizeAIStream()` separates output text from reasoning, refusal, partial tool input, tool-call markers, control events, and unknown events. `parastream()` receives only the output text selected by the caller.
 
+## Assemble a message
+
+For applications that need accumulated state and completed tool inputs, `consume()` normalizes and assembles a source, awaiting each handler before advancing:
+
+```ts
+import { consume } from "parastream";
+
+const message = await consume(response, {
+  text: ({ channel, text }) => { if (channel === "output") render(text); },
+  toolCallComplete: ({ toolCall }) => queueToolCall(toolCall),
+  toolInputError: ({ toolCall, reason }) => reportBadInput(toolCall, reason),
+  reset: ({ state }) => redraw(state),
+}, {
+  normalize: { signal: abort.signal },
+  assembler: { maxTextChars: 2_000_000, maxToolInputChars: 200_000 },
+});
+console.log(message.text, message.toolCalls);
+```
+
+Alternatively, use `createMessageAssembler()` with an existing `normalizeAIStream()` loop. Assembly is opt-in and uses explicit limits; an unfinished tool call is not treated as complete merely because the stream ended. See the [assembler contract](docs/api.md#assemble-a-message) for limits, reset, identity, and cancellation details.
+
 ## Compose with Web Streams
 
 `normalizeAIReadableStream()` exposes the same `ReadableStream<NormalizedPart>` data, with a queue size of one and cancellation propagated to the upstream iterator. It is an alternative *consumer surface*, not a second parser. Use standard `pipeThrough()` and `pipeTo()` to compose it with sinks in browsers, Workers, Bun, or Node.js 22+.

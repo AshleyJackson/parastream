@@ -1,0 +1,19 @@
+{"type":"start-step"}
+{"type":"text-delta","id":"a","delta":"Hello "}
+{"type":"text-delta","id":"b","delta":"other"}
+{"type":"reasoning-delta","id":"a","delta":"thinking"}
+{"type":"text-delta","id":"a","delta":"world"}
+{"type":"tool-input-start","toolCallId":"call-1","toolName":"lookup"}
+{"type":"tool-input-delta","toolCallId":"call-1","inputTextDelta":"{\"query\":"}
+{"type":"tool-input-delta","toolCallId":"call-1","inputTextDelta":"\"weather\"}"}
+{"type":"tool-input-end","toolCallId":"call-1"}
+{"type":"finish-step"}
+{"type":"start-step"}
+{"type":"text-delta","id":"a","delta":" discard"}
+{"type":"tool-input-start","toolCallId":"call-2","toolName":"discard"}
+{"type":"tool-input-delta","toolCallId":"call-2","inputTextDelta":"{}"}
+{"type":"tool-input-end","toolCallId":"call-2"}
+{"type":"reset-step"}
+{"type":"start-step"}
+{"type":"text-delta","id":"a","delta":"!"}
+{"type":"finish-step"}
