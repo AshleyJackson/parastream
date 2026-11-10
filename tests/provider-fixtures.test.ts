@@ -132,7 +132,11 @@ describe("provider stream fixtures", () => {
 
     expectProtocol(parts, "cohere-chat-v2");
     expect(texts(parts)).toEqual(["Hello from Cohere."]);
-    expect(parts.some((part) => part.kind === "tool-call")).toBe(true);
+    expect(parts.find((part) => part.kind === "tool-call")).toMatchObject({
+      toolCallId: "tool_demo",
+      toolName: "lookup",
+      blockId: 0,
+    });
     expect(toolInputDeltas(parts)).toEqual(['{"query":']);
     expect(parts.some((part) => part.kind === "control" && part.eventType === "message-end")).toBe(true);
   });

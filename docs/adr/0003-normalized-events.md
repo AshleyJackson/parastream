@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-03
+- Amended: 2026-11-10
 
 ## Context
 
@@ -17,3 +18,12 @@ Normalize recognized payloads into typed parts: text, reasoning, refusal, tool-i
 - Applications must explicitly choose which channels to display or segment.
 - `unknown` is a supported result, not a parser failure.
 - Full tool-call parsing and multimodal decoding remain outside the text segmenter.
+
+## Amendment (2026-11-10)
+
+The part union is `text-delta` (with `channel` of `output`, `reasoning`, or `refusal`), `tool-input-delta`, `tool-call`, `control`, and `unknown`. Tool and control parts carry `toolCallId`, `toolName`, `blockId`, or `eventType` when the provider supplies them, so concurrent calls and blocks stay distinguishable.
+
+Two refinements follow from practice:
+
+- A recognized event that carries no text becomes a `control`, never an empty `text-delta`.
+- Some controls are not informational. The AI SDK `reset-step` part invalidates parts already emitted for the current step. Parastream reports it faithfully and leaves the decision to the consumer, because an append-only text channel cannot express retraction.

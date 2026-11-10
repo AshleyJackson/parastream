@@ -52,6 +52,15 @@ describe("Web Streams adapters", () => {
     ]);
   });
 
+  test("forwards transport limits to the underlying parser", async () => {
+    const stream = normalizeAIReadableStream("data: 12345\n\n", {
+      transport: "sse",
+      maxEventLength: 4,
+    });
+
+    await expect(collectReadable(stream)).rejects.toThrow("maxEventLength");
+  });
+
   test("cancels the upstream iterator when the readable stream is cancelled", async () => {
     let returned = false;
     async function* source() {

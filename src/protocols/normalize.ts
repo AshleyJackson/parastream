@@ -22,6 +22,7 @@ export const protocolHintSchema = z.union([
 export type ProtocolHint = z.infer<typeof protocolHintSchema>;
 
 const textChannelSchema = z.enum(["output", "reasoning", "refusal"]);
+const blockIdSchema = z.union([z.string(), z.number()]);
 const normalizedBaseSchema = z.object({
   protocol: responseProtocolSchema,
   raw: z.unknown(),
@@ -32,16 +33,20 @@ export const normalizedPartSchema = z.discriminatedUnion("kind", [
     kind: z.literal("text-delta"),
     channel: textChannelSchema,
     text: z.string(),
-    blockId: z.union([z.string(), z.number()]).optional(),
+    blockId: blockIdSchema.optional(),
   }),
   normalizedBaseSchema.extend({
     kind: z.literal("tool-input-delta"),
     text: z.string(),
     toolCallId: z.string().optional(),
     toolName: z.string().optional(),
+    blockId: blockIdSchema.optional(),
   }),
   normalizedBaseSchema.extend({
     kind: z.literal("tool-call"),
+    toolCallId: z.string().optional(),
+    toolName: z.string().optional(),
+    blockId: blockIdSchema.optional(),
   }),
   normalizedBaseSchema.extend({
     kind: z.literal("control"),
@@ -59,6 +64,7 @@ type JsonRecord = z.infer<typeof recordSchema>;
 
 const knownOpenAIResponseEvents = new Set([
   "response.created",
+  "response.queued",
   "response.in_progress",
   "response.completed",
   "response.failed",
@@ -69,9 +75,15 @@ const knownOpenAIResponseEvents = new Set([
   "response.content_part.done",
   "response.output_text.delta",
   "response.output_text.done",
+  "response.output_text.annotation.added",
   "response.refusal.delta",
   "response.refusal.done",
+  "response.reasoning_text.delta",
+  "response.reasoning_text.done",
+  "response.reasoning_summary_part.added",
+  "response.reasoning_summary_part.done",
   "response.reasoning_summary_text.delta",
+  "response.reasoning_summary_text.done",
   "response.function_call_arguments.delta",
   "response.function_call_arguments.done",
 ]);
@@ -94,8 +106,11 @@ const knownAiSdkPartTypes = new Set([
   "reasoning-start",
   "reasoning-delta",
   "reasoning-end",
+  "reasoning-part-finish",
+  "refusal-delta",
   "tool-input-start",
   "tool-input-delta",
+  "tool-input-end",
   "tool-input-available",
   "tool-input-error",
   "tool-call",
@@ -111,11 +126,14 @@ const knownAiSdkPartTypes = new Set([
   "step-start",
   "start-step",
   "finish-step",
+  "reset-step",
+  "steering-message",
   "finish",
   "abort",
   "message-metadata",
   "source-url",
   "source-document",
+  "source",
   "reasoning-file",
   "file",
   "custom",
@@ -186,11 +204,22 @@ function isOpenAIChatEvent(record: JsonRecord): boolean {
 }
 
 function isGeminiEvent(record: JsonRecord): boolean {
-  if (!Array.isArray(record.candidates)) return false;
+  if (!Array.isArray(record.candidates)) {
+    return asRecord(record.promptFeedback) !== undefined;
+  }
+  if (record.candidates.length === 0) {
+    return record.usageMetadata !== undefined;
+  }
   return record.candidates.some((candidate) => {
     const candidateRecord = asRecord(candidate);
-    const content = asRecord(candidateRecord?.content);
-    return content !== undefined && Array.isArray(content.parts);
+    if (candidateRecord === undefined) return false;
+    const content = asRecord(candidateRecord.content);
+    return (
+      (content !== undefined && Array.isArray(content.parts)) ||
+      typeof candidateRecord.finishReason === "string" ||
+      Array.isArray(candidateRecord.safetyRatings) ||
+      typeof candidateRecord.index === "number"
+    );
   });
 }
 
@@ -208,19 +237,58 @@ function isOllamaGenerateEvent(record: JsonRecord): boolean {
   return typeof record.done === "boolean" && typeof record.response === "string";
 }
 
+const bedrockEventKeys = new Set([
+  "contentBlockDelta",
+  "contentBlockStart",
+  "contentBlockStop",
+  "messageStart",
+  "messageStop",
+  "metadata",
+  "internalServerException",
+  "modelStreamErrorException",
+  "serviceUnavailableException",
+  "throttlingException",
+  "validationException",
+]);
+
+/**
+ * `metadata` is a common key outside Bedrock, so it identifies a Bedrock event
+ * only when it is the union member's sole top-level key. The other union keys
+ * are distinctive enough to identify the family on their own.
+ */
 function isBedrockEvent(record: JsonRecord): boolean {
-  return [
-    "contentBlockDelta",
-    "contentBlockStart",
-    "contentBlockStop",
-    "messageStart",
-    "messageStop",
-    "metadata",
-    "modelStreamErrorException",
-    "serviceUnavailableException",
-    "throttlingException",
-    "validationException",
-  ].some((key) => key in record);
+  const keys = Object.keys(record);
+  const [onlyKey] = keys;
+  if (keys.length === 1) {
+    return onlyKey !== undefined && bedrockEventKeys.has(onlyKey);
+  }
+  return keys.some((key) => key !== "metadata" && bedrockEventKeys.has(key));
+}
+
+/**
+ * Anthropic reports mid-stream failures as `{"type":"error","error":{...}}`.
+ * The AI SDK also has a generic `error` part, so require Anthropic's nested
+ * error object and exclude the AI SDK `errorText` field.
+ */
+function isAnthropicError(record: JsonRecord): boolean {
+  if (stringField(record, "type") !== "error") return false;
+  if (stringField(record, "errorText") !== undefined) return false;
+  const error = asRecord(record.error);
+  return error !== undefined && typeof error.type === "string";
+}
+
+/**
+ * OpenAI Responses reports stream failures as a top-level `error` event with
+ * `code`, `param`, or `sequence_number`, not an Anthropic-style `error` object.
+ */
+function isOpenAIResponseError(record: JsonRecord): boolean {
+  if (stringField(record, "type") !== "error") return false;
+  if (asRecord(record.error) !== undefined) return false;
+  return (
+    typeof record.code === "string" ||
+    "param" in record ||
+    typeof record.sequence_number === "number"
+  );
 }
 
 /** Detects a protocol family from one complete decoded event, not a model name. */
@@ -229,12 +297,17 @@ export function detectResponseProtocol(value: unknown): ResponseProtocol {
   if (record === undefined) return "unknown";
 
   const type = stringField(record, "type");
-  if (type !== undefined && knownOpenAIResponseEvents.has(type)) {
+  if (
+    type !== undefined &&
+    (knownOpenAIResponseEvents.has(type) || type.startsWith("response."))
+  ) {
     return "openai-responses";
   }
   if (type !== undefined && knownAnthropicEvents.has(type)) {
     return "anthropic-messages";
   }
+  if (isAnthropicError(record)) return "anthropic-messages";
+  if (isOpenAIResponseError(record)) return "openai-responses";
   if (
     type === "tool-call-delta" &&
     isAiSdkPartType(type) &&
@@ -307,6 +380,7 @@ function makeToolInput(
   raw: unknown,
   toolCallId?: string,
   toolName?: string,
+  blockId?: string | number,
 ): NormalizedPart {
   return normalizedPartSchema.parse({
     kind: "tool-input-delta",
@@ -315,11 +389,33 @@ function makeToolInput(
     raw,
     ...(toolCallId === undefined ? {} : { toolCallId }),
     ...(toolName === undefined ? {} : { toolName }),
+    ...(blockId === undefined ? {} : { blockId }),
+  });
+}
+
+interface ToolIdentity {
+  toolCallId?: string | undefined;
+  toolName?: string | undefined;
+  blockId?: string | number | undefined;
+}
+
+function makeToolCall(
+  protocol: ResponseProtocol,
+  raw: unknown,
+  identity: ToolIdentity = {},
+): NormalizedPart {
+  return normalizedPartSchema.parse({
+    kind: "tool-call",
+    protocol,
+    raw,
+    ...(identity.toolCallId === undefined ? {} : { toolCallId: identity.toolCallId }),
+    ...(identity.toolName === undefined ? {} : { toolName: identity.toolName }),
+    ...(identity.blockId === undefined ? {} : { blockId: identity.blockId }),
   });
 }
 
 function makePart(
-  kind: "tool-call" | "control" | "unknown",
+  kind: "control" | "unknown",
   protocol: ResponseProtocol,
   raw: unknown,
   eventType?: string,
@@ -387,18 +483,31 @@ function normalizeOpenAIChat(record: JsonRecord, raw: unknown): NormalizedPart[]
         const call = asRecord(callValue);
         const fn = asRecord(call?.function);
         const argumentsDelta = stringField(fn ?? {}, "arguments");
+        const toolCallId = stringField(call ?? {}, "id");
+        const toolName = stringField(fn ?? {}, "name");
+        const toolIndex =
+          typeof call?.index === "number" || typeof call?.index === "string"
+            ? call.index
+            : blockId;
         if (argumentsDelta !== undefined && argumentsDelta.length > 0) {
           output.push(
             makeToolInput(
               "openai-chat-completions",
               argumentsDelta,
               raw,
-              stringField(call ?? {}, "id"),
-              stringField(fn ?? {}, "name"),
+              toolCallId,
+              toolName,
+              toolIndex,
             ),
           );
         } else if (call !== undefined) {
-          output.push(makePart("tool-call", "openai-chat-completions", raw));
+          output.push(
+            makeToolCall("openai-chat-completions", raw, {
+              toolCallId,
+              toolName,
+              blockId: toolIndex,
+            }),
+          );
         }
       }
     }
@@ -412,13 +521,24 @@ function normalizeOpenAIChat(record: JsonRecord, raw: unknown): NormalizedPart[]
 
 function normalizeOpenAIResponses(record: JsonRecord, raw: unknown): NormalizedPart[] {
   const type = stringField(record, "type") ?? "response.event";
+  if (type === "error" && isOpenAIResponseError(record)) {
+    return [makePart("control", "openai-responses", raw, type)];
+  }
   if (!knownOpenAIResponseEvents.has(type)) {
     return [makePart("unknown", "openai-responses", raw, type)];
   }
+  const outputIndex =
+    typeof record.output_index === "number" ? record.output_index : undefined;
   if (type === "response.output_item.added") {
     const item = asRecord(record.item);
     if (item?.type === "function_call") {
-      return [makePart("tool-call", "openai-responses", raw, type)];
+      return [
+        makeToolCall("openai-responses", raw, {
+          toolCallId: stringField(item, "call_id") ?? stringField(item, "id"),
+          toolName: stringField(item, "name"),
+          blockId: outputIndex,
+        }),
+      ];
     }
   }
   const delta = stringField(record, "delta");
@@ -427,13 +547,16 @@ function normalizeOpenAIResponses(record: JsonRecord, raw: unknown): NormalizedP
   }
 
   if (type === "response.output_text.delta") {
-    return [makeText("openai-responses", "output", delta, raw)];
+    return [makeText("openai-responses", "output", delta, raw, outputIndex)];
   }
   if (type === "response.refusal.delta") {
-    return [makeText("openai-responses", "refusal", delta, raw)];
+    return [makeText("openai-responses", "refusal", delta, raw, outputIndex)];
   }
   if (type === "response.reasoning_summary_text.delta") {
-    return [makeText("openai-responses", "reasoning", delta, raw)];
+    return [makeText("openai-responses", "reasoning", delta, raw, outputIndex)];
+  }
+  if (type === "response.reasoning_text.delta") {
+    return [makeText("openai-responses", "reasoning", delta, raw, outputIndex)];
   }
   if (type === "response.function_call_arguments.delta") {
     return [
@@ -443,6 +566,7 @@ function normalizeOpenAIResponses(record: JsonRecord, raw: unknown): NormalizedP
         raw,
         stringField(record, "item_id"),
         stringField(record, "name"),
+        outputIndex,
       ),
     ];
   }
@@ -451,16 +575,31 @@ function normalizeOpenAIResponses(record: JsonRecord, raw: unknown): NormalizedP
 
 function normalizeAnthropic(record: JsonRecord, raw: unknown): NormalizedPart[] {
   const type = stringField(record, "type") ?? "anthropic.event";
+  const index = typeof record.index === "number" ? record.index : undefined;
   if (type === "content_block_start") {
     const block = asRecord(record.content_block);
-    return [
-      makePart(
-        block?.type === "tool_use" ? "tool-call" : "control",
-        "anthropic-messages",
-        raw,
-        type,
-      ),
-    ];
+    if (block?.type === "tool_use") {
+      return [
+        makeToolCall("anthropic-messages", raw, {
+          toolCallId: stringField(block, "id"),
+          toolName: stringField(block, "name"),
+          blockId: index,
+        }),
+      ];
+    }
+    const output = [makePart("control", "anthropic-messages", raw, type)];
+    const text = stringField(block ?? {}, "text");
+    if (text !== undefined && text.length > 0) {
+      output.push(makeText("anthropic-messages", "output", text, raw, index));
+    }
+    const thinking = stringField(block ?? {}, "thinking");
+    if (thinking !== undefined && thinking.length > 0) {
+      output.push(makeText("anthropic-messages", "reasoning", thinking, raw, index));
+    }
+    return output;
+  }
+  if (type === "error") {
+    return [makePart("control", "anthropic-messages", raw, type)];
   }
   if (type !== "content_block_delta") {
     return knownAnthropicEvents.has(type)
@@ -471,7 +610,6 @@ function normalizeAnthropic(record: JsonRecord, raw: unknown): NormalizedPart[] 
   const delta = asRecord(record.delta);
   if (delta === undefined) return [makePart("control", "anthropic-messages", raw, type)];
   const deltaType = stringField(delta, "type");
-  const index = typeof record.index === "number" ? record.index : undefined;
 
   if (deltaType === "text_delta") {
     const text = stringField(delta, "text");
@@ -489,7 +627,7 @@ function normalizeAnthropic(record: JsonRecord, raw: unknown): NormalizedPart[] 
     const text = stringField(delta, "partial_json");
     return text === undefined || text.length === 0
       ? [makePart("control", "anthropic-messages", raw, deltaType)]
-      : [makeToolInput("anthropic-messages", text, raw)];
+      : [makeToolInput("anthropic-messages", text, raw, undefined, undefined, index)];
   }
   return [makePart("control", "anthropic-messages", raw, deltaType ?? type)];
 }
@@ -521,7 +659,14 @@ function normalizeGemini(record: JsonRecord, raw: unknown): NormalizedPart[] {
             ),
           );
         } else if ("functionCall" in part || "function_call" in part) {
-          output.push(makePart("tool-call", "gemini-generate-content", raw));
+          const functionCall = asRecord(part.functionCall) ?? asRecord(part.function_call);
+          output.push(
+            makeToolCall("gemini-generate-content", raw, {
+              toolCallId: stringField(functionCall ?? {}, "id"),
+              toolName: stringField(functionCall ?? {}, "name"),
+              blockId,
+            }),
+          );
         } else {
           output.push(makePart("control", "gemini-generate-content", raw));
         }
@@ -555,8 +700,16 @@ function normalizeOllamaChat(record: JsonRecord, raw: unknown): NormalizedPart[]
   if (thinking !== undefined && thinking.length > 0) {
     output.push(makeText("ollama-chat", "reasoning", thinking, raw));
   }
-  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    output.push(makePart("tool-call", "ollama-chat", raw));
+  if (Array.isArray(message.tool_calls)) {
+    for (const callValue of message.tool_calls) {
+      const call = asRecord(callValue);
+      const fn = asRecord(call?.function);
+      output.push(
+        makeToolCall("ollama-chat", raw, {
+          toolName: stringField(fn ?? {}, "name"),
+        }),
+      );
+    }
   }
   if (output.length === 0) output.push(makePart("control", "ollama-chat", raw));
   return output;
@@ -600,7 +753,12 @@ function normalizeAiSdk(record: JsonRecord, raw: unknown): NormalizedPart[] {
     type === "tool-input-available" ||
     type === "tool-call-streaming-start"
   ) {
-    return [makePart("tool-call", "ai-sdk", raw, type)];
+    return [
+      makeToolCall("ai-sdk", raw, {
+        toolCallId: stringField(record, "toolCallId"),
+        toolName: stringField(record, "toolName"),
+      }),
+    ];
   }
 
   return isAiSdkPartType(type)
@@ -610,6 +768,7 @@ function normalizeAiSdk(record: JsonRecord, raw: unknown): NormalizedPart[] {
 
 function normalizeCohere(record: JsonRecord, raw: unknown): NormalizedPart[] {
   const type = stringField(record, "type") ?? "cohere.event";
+  const index = typeof record.index === "number" ? record.index : undefined;
   const delta = asRecord(record.delta);
   const message = asRecord(delta?.message);
 
@@ -618,15 +777,7 @@ function normalizeCohere(record: JsonRecord, raw: unknown): NormalizedPart[] {
     const text = stringField(content ?? {}, "text");
     return text === undefined || text.length === 0
       ? [makePart("control", "cohere-chat-v2", raw, type)]
-      : [
-          makeText(
-            "cohere-chat-v2",
-            "output",
-            text,
-            raw,
-            typeof record.index === "number" ? record.index : undefined,
-          ),
-        ];
+      : [makeText("cohere-chat-v2", "output", text, raw, index)];
   }
 
   if (type === "tool-call-delta") {
@@ -635,18 +786,28 @@ function normalizeCohere(record: JsonRecord, raw: unknown): NormalizedPart[] {
     const args = stringField(fn ?? {}, "arguments");
     return args === undefined || args.length === 0
       ? [makePart("control", "cohere-chat-v2", raw, type)]
-      : [makeToolInput("cohere-chat-v2", args, raw)];
+      : [makeToolInput("cohere-chat-v2", args, raw, undefined, undefined, index)];
+  }
+
+  if (type === "tool-call-start") {
+    // Chat v2 nests the call under delta.message.tool_calls; accept the
+    // flatter record.tool_call shape emitted by some compatible gateways.
+    const nestedToolCalls = message?.tool_calls;
+    const toolCall =
+      asRecord(Array.isArray(nestedToolCalls) ? nestedToolCalls[0] : nestedToolCalls) ??
+      asRecord(record.tool_call);
+    const fn = asRecord(toolCall?.function);
+    return [
+      makeToolCall("cohere-chat-v2", raw, {
+        toolCallId: stringField(toolCall ?? {}, "id") ?? stringField(record, "id"),
+        toolName: stringField(fn ?? {}, "name"),
+        blockId: index,
+      }),
+    ];
   }
 
   if (knownCohereEventTypes.has(type)) {
-    return [
-      makePart(
-        type === "tool-call-start" ? "tool-call" : "control",
-        "cohere-chat-v2",
-        raw,
-        type,
-      ),
-    ];
+    return [makePart("control", "cohere-chat-v2", raw, type)];
   }
   return [makePart("unknown", "cohere-chat-v2", raw, type)];
 }
@@ -654,8 +815,18 @@ function normalizeCohere(record: JsonRecord, raw: unknown): NormalizedPart[] {
 function normalizeBedrock(record: JsonRecord, raw: unknown): NormalizedPart[] {
   const startEvent = asRecord(record.contentBlockStart);
   const start = asRecord(startEvent?.start);
-  if (asRecord(start?.toolUse) !== undefined) {
-    return [makePart("tool-call", "aws-bedrock-converse", raw, "contentBlockStart")];
+  const startToolUse = asRecord(start?.toolUse);
+  if (startToolUse !== undefined) {
+    return [
+      makeToolCall("aws-bedrock-converse", raw, {
+        toolCallId: stringField(startToolUse, "toolUseId"),
+        toolName: stringField(startToolUse, "name"),
+        blockId:
+          typeof startEvent?.contentBlockIndex === "number"
+            ? startEvent.contentBlockIndex
+            : undefined,
+      }),
+    ];
   }
 
   const event = asRecord(record.contentBlockDelta);
@@ -684,7 +855,7 @@ function normalizeBedrock(record: JsonRecord, raw: unknown): NormalizedPart[] {
   const toolUse = asRecord(delta.toolUse);
   const input = stringField(toolUse ?? {}, "input");
   if (input !== undefined && input.length > 0) {
-    return [makeToolInput("aws-bedrock-converse", input, raw)];
+    return [makeToolInput("aws-bedrock-converse", input, raw, undefined, undefined, index)];
   }
 
   const reasoningContent = asRecord(delta.reasoningContent);
@@ -706,6 +877,14 @@ export function normalizeResponseEvent(
   inputHint: ProtocolHint = "auto",
 ): NormalizedPart[] {
   const hint = protocolHintSchema.parse(inputHint);
+  if (hint === "plain-text") {
+    if (typeof value !== "string") {
+      throw new TypeError('Payload does not match protocol hint "plain-text"');
+    }
+    return value.length === 0
+      ? [makePart("control", "plain-text", value)]
+      : [makeText("plain-text", "output", value, value)];
+  }
   const record = asRecord(value);
   if (record === undefined) {
     return [makePart("unknown", "unknown", value)];

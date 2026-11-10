@@ -66,6 +66,11 @@ describe("NDJSON framing", () => {
     await expect(collect(parseNDJSON(["{\"valid\":true}\n", "not-json\n"])))
       .rejects.toThrow("Invalid NDJSON at line 2");
   });
+
+  test("stops at a [DONE] sentinel", async () => {
+    const events = await collect(parseNDJSON("{\"a\":1}\n[DONE]\n{\"b\":2}\n"));
+    expect(events).toEqual([{ a: 1 }]);
+  });
 });
 
 describe("normalizeAIStream", () => {
@@ -131,5 +136,45 @@ describe("normalizeAIStream", () => {
     const pending = iterator.next();
     controller.abort();
     await expect(pending).rejects.toHaveProperty("name", "AbortError");
+  });
+
+  test("skips empty SSE data frames as keep-alives", async () => {
+    const parts = await collect(
+      normalizeAIStream(
+        'data:\n\ndata: {"type":"response.output_text.delta","delta":"Hi"}\n\n',
+        { transport: "sse" },
+      ),
+    );
+    expect(parts).toMatchObject([{ kind: "text-delta", text: "Hi" }]);
+  });
+
+  test("rejects a protocol hint for plain text", async () => {
+    await expect(
+      collect(normalizeAIStream("hello", { protocol: "openai-chat-completions" })),
+    ).rejects.toThrow(/cannot be applied to a plain text stream/);
+  });
+
+  test("forwards line and event limits to the parsers", async () => {
+    await expect(
+      collect(
+        normalizeAIStream("data: 12345\n\n", { transport: "sse", maxEventLength: 4 }),
+      ),
+    ).rejects.toThrow("maxEventLength");
+    await expect(
+      collect(
+        normalizeAIStream("{\"a\":123456}\n", { transport: "ndjson", maxLineLength: 8 }),
+      ),
+    ).rejects.toThrow("maxLineLength");
+  });
+
+  test("keeps raw faithful to the payload when an event name is attached", async () => {
+    const parts = await collect(
+      normalizeAIStream(
+        'event: message\ndata: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+        { transport: "sse" },
+      ),
+    );
+    expect(parts).toMatchObject([{ kind: "text-delta", text: "Hi" }]);
+    expect(parts[0]?.raw).toEqual({ choices: [{ delta: { content: "Hi" } }] });
   });
 });

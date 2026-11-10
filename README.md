@@ -161,7 +161,7 @@ for await (const part of normalizeAIStream(anthropicResponse, {
   if (part.kind === "text-delta" && part.channel === "output") {
     process.stdout.write(part.text);
   } else if (part.kind === "tool-input-delta") {
-    // Accumulate by the provider's block/tool identity; this is partial JSON.
+    // Accumulate by part.toolCallId ?? part.blockId; this is partial JSON.
   }
 }
 ```
@@ -275,7 +275,7 @@ Streaming depends on the whole path. Do not buffer the upstream with `response.t
 
 Paragraph mode trades first-visible latency for fewer UI updates. For token-by-token rendering, consume `normalizeAIStream()` or `normalizeAIReadableStream()` directly; use `unit: "line"` when line boundaries suit the response. The default delimiter behavior preserves paragraph boundaries.
 
-Paragraph splitting recognizes adjacent LF/CRLF blank lines; line splitting recognizes LF/CRLF. By default, delimiters are preserved and text is not trimmed, so concatenating emitted units reconstructs the input. A pending unit larger than the default `maxBuffer` (1,000,000 UTF-16 code units) throws instead of being silently split. Blank lines containing spaces are not paragraph delimiters yet.
+Paragraph splitting recognizes adjacent LF/CRLF blank lines; line splitting recognizes LF/CRLF. By default, delimiters are preserved and text is not trimmed, so concatenating emitted units reconstructs the input. Boundaries with no content are folded into the next unit instead of producing empty chunks. A pending unit larger than the default `maxBuffer` (1,000,000 UTF-16 code units) throws instead of being silently split. Blank lines containing spaces are not paragraph delimiters yet.
 
 ## Supported upstream shapes
 
@@ -289,14 +289,34 @@ Parastream detects event payloads by their structure, not by model name:
 | Bare byte stream without headers | `normalizeAIStream(bytes, { transport: "sse" })` or `transport: "ndjson"` |
 | Known gateway variant | Add an explicit `protocol` hint when needed |
 
-The current protocol families include OpenAI Chat Completions-compatible and Responses streams, Anthropic Messages, Gemini `streamGenerateContent`, native Ollama chat/generate, Cohere Chat v2, decoded AWS Bedrock ConverseStream SDK events, and Vercel AI SDK parts. Mistral, Azure OpenAI, Hugging Face TGI’s OpenAI-compatible endpoint, and other gateways use the shared Chat Completions adapter when their actual event shape matches. This is not a claim that every API or modality from those providers is supported.
+Supported protocol families:
+
+| Family | Recognized as |
+|---|---|
+| OpenAI Chat Completions-compatible, including Mistral, Azure OpenAI, and TGI’s OpenAI-compatible endpoint | `openai-chat-completions` |
+| OpenAI Responses | `openai-responses` |
+| Anthropic Messages | `anthropic-messages` |
+| Gemini `streamGenerateContent` | `gemini-generate-content` |
+| Native Ollama | `ollama-chat`, `ollama-generate` |
+| Cohere Chat v2 | `cohere-chat-v2` |
+| Decoded AWS Bedrock ConverseStream SDK events | `aws-bedrock-converse` |
+| Vercel AI SDK core parts and UI message data stream | `ai-sdk` |
+| Plain text, including the AI SDK text stream | `plain-text` |
+
+This is not a claim that every API or modality from those providers is supported. Known gaps:
+
+- **Gemini Interactions API** (`interaction.created`, `step.delta`, `interaction.completed`) is not normalized. Google recommends it for new projects, but its step envelopes carry `event_type` rather than `type`; Parastream reports those events as `unknown` rather than mistaking them for Generate Content.
+- **Raw AWS EventStream** framing is not decoded. Bedrock support accepts SDK-decoded ConverseStream objects.
+- **Hugging Face TGI native `textGenerationStream`** token events are not recognized; use its OpenAI-compatible endpoint.
+- **OpenAI Responses WebSocket mode**, live audio/video sessions, and other socket or binary protocols are out of scope.
 
 Examples of why normalization matters:
 
-- OpenAI Responses emits semantic event types such as `response.output_text.delta`; tool arguments, refusals, and completion have different event types.
+- OpenAI Responses emits semantic event types such as `response.output_text.delta`; tool arguments, refusals, reasoning, and completion have different event types.
 - Anthropic Messages uses indexed content blocks. Tool input arrives as partial JSON string deltas, not a complete object on each event.
-- OpenAI-compatible endpoints may include usage or control chunks without text.
-- Bedrock support accepts SDK-decoded ConverseStream objects, not raw AWS EventStream wire frames.
+- OpenAI-compatible endpoints may include usage, moderation, or annotation chunks without text; Azure OpenAI sends filter annotations that way.
+- Gemini and Ollama deliver complete tool-call argument objects, so they produce tool calls without partial-argument deltas.
+- Reasoning and refusal text stay on their own channels, so a model that exposes private reasoning does not leak it into rendered prose by default.
 
 See [protocol detection and support](docs/protocol-detection.md) for exact shapes and [protocol research](docs/protocol-research.md) for sources and interoperability findings.
 
@@ -313,10 +333,11 @@ See [protocol detection and support](docs/protocol-detection.md) for exact shape
 
 - This package does not make authenticated provider requests, retry interrupted requests, execute tools, or provide a proxy/server framework.
 - Segmentation currently supports paragraphs and lines. Sentence, word, grapheme, and custom splitting are not implemented.
-- Transport parsing and normalized events do not provide a reconnect cursor, replay guarantee, or general duplicate-event suppression. The application owns reconnect and idempotency policy.
-- A `text-delta` is append-only. A provider or application that sends replaceable text snapshots needs explicit replacement/removal handling; a snapshot cannot safely be converted to an append delta if earlier text may need to be retracted.
+- Transport parsing and normalized events do not provide a reconnect cursor, replay guarantee, or general duplicate-event suppression. The application owns reconnect and idempotency policy. SSE `id` and `retry` fields are reported on frames but not remembered.
+- Framing is deliberately lenient in two places: a `data: [DONE]` payload ends the stream for SSE and NDJSON alike, and an SSE frame still open at end of stream is flushed rather than discarded. A truncated stream can therefore surface one partial frame that a strict reader would drop.
+- A `text-delta` is append-only. A provider or application that sends replaceable text snapshots needs explicit replacement/removal handling; a snapshot cannot safely be converted to an append delta if earlier text may need to be retracted. The AI SDK's `reset-step` control is reported faithfully but not applied.
 - Tool arguments, reasoning, refusal, controls, and unknown events remain separate parts. Parastream does not assemble every tool lifecycle into an executable call.
-- Raw Bedrock EventStream, native Hugging Face TGI token events, WebSocket binary streams, and general audio/video normalization are outside the current scope.
+- Raw Bedrock EventStream, the Gemini Interactions API, native Hugging Face TGI token events, OpenAI's Responses WebSocket mode, and general socket, audio, and video protocols are outside the current scope.
 
 ## Potential future directions
 
@@ -333,15 +354,36 @@ These are possible extensions, not commitments or current API:
 ```sh
 bun install
 bun run test
+bun run test:unit
 bun run typecheck
 bun run build
 ```
 
-All automated tests live under `tests/`. `bun run test` includes a delayed visual playback that demonstrates paragraph buffering and immediate activity events. See [the docs index](docs/README.md) for architecture, protocol detection, research references, testing, and ADRs.
+All automated tests live under `tests/`. `bun run test` includes a delayed visual playback that demonstrates paragraph buffering and immediate activity events; `bun run test:unit` runs only the deterministic unit suite, and `bun run check` pairs that suite with the type check. See [the docs index](docs/README.md) for architecture, protocol detection, research references, testing, and ADRs.
 
 ## References
 
+Wire framing:
+
+- [WHATWG HTML: Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+- [NDJSON specification](https://github.com/ndjson/ndjson-spec)
+
+Providers and SDKs:
+
 - [OpenAI: Streaming API responses](https://developers.openai.com/api/docs/guides/streaming-responses)
+- [OpenAI: Chat Completions streaming](https://platform.openai.com/docs/api-reference/chat-streaming)
 - [Anthropic: Streaming messages](https://docs.anthropic.com/en/docs/build-with-claude/streaming)
+- [Gemini: `streamGenerateContent`](https://ai.google.dev/api/generate-content#method:-models.streamgeneratecontent)
+- [Gemini: Streaming interactions](https://ai.google.dev/gemini-api/docs/streaming)
+- [Ollama API](https://docs.ollama.com/api)
+- [Cohere: Streaming responses](https://docs.cohere.com/v2/docs/streaming)
+- [Amazon Bedrock ConverseStream](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html)
+- [Vercel AI SDK: Stream protocols](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)
+- [Mistral: Chat](https://docs.mistral.ai/api/endpoint/chat)
+- [Azure OpenAI: Content streaming](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/content-streaming)
+- [Hugging Face TGI: Streaming](https://huggingface.co/docs/text-generation-inference/conceptual/streaming)
+
+Runtime and streams:
+
 - [MDN: Streams API concepts and backpressure](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API/Concepts)
 - [Cloudflare Workers: Streams](https://developers.cloudflare.com/workers/runtime-apis/streams/)

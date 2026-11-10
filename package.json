@@ -4,6 +4,7 @@
   "description": "Normalize AI stream protocols and segment incremental text.",
   "type": "module",
   "private": true,
+  "sideEffects": false,
   "license": "MIT",
   "files": [
     "dist",
@@ -20,7 +21,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "bun run scripts/clean-dist.ts && tsc -p tsconfig.build.json",

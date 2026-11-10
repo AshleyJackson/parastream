@@ -52,9 +52,9 @@ export function normalizeAIReadableStream(
     userSignal?.addEventListener("abort", abortFromUser, { once: true });
   }
 
+  // Forward every normalized option so new transport limits reach the parser.
   const iterator = normalizeAIStream(inputSource, {
-    transport: options.transport,
-    protocol: options.protocol,
+    ...options,
     signal: abortController.signal,
   })[Symbol.asyncIterator]();
   let complete = false;

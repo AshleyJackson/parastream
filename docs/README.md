@@ -1,6 +1,6 @@
 # Parastream documentation
 
-This documentation describes the 0.0.1 development target. Compatibility means support for a documented protocol shape, not every model or deployment using that provider.
+This documentation describes the 0.0.1 development target. Compatibility means support for a documented protocol shape, not every model or deployment using that provider. [Protocol detection](protocol-detection.md) carries the support matrix, including the families that are recognized but deliberately not normalized.
 
 ## Guides
 

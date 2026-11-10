@@ -52,6 +52,32 @@ describe("parastream", () => {
     ).rejects.toThrow(RangeError);
   });
 
+  test("does not charge a trailing delimiter against maxBuffer", async () => {
+    expect(await collect(parastream("1234\n\n", { maxBuffer: 4 }))).toEqual([
+      "1234\n\n",
+    ]);
+    expect(
+      await collect(parastream("1234\r\n", { unit: "line", maxBuffer: 4 })),
+    ).toEqual(["1234\r\n"]);
+    await expect(
+      collect(parastream("12345\n\n", { maxBuffer: 4 })),
+    ).rejects.toThrow(RangeError);
+  });
+
+  test("folds empty paragraph boundaries into the next unit", async () => {
+    const chunks = await collect(parastream("a\n\n\n\nb"));
+    expect(chunks).toEqual(["a\n\n", "\n\nb"]);
+    expect(chunks.join("")).toBe("a\n\n\n\nb");
+
+    expect(
+      await collect(parastream("a\n\n\n\nb", { includeDelimiter: false })),
+    ).toEqual(["a", "b"]);
+
+    expect(await collect(parastream("\n\nb"))).toEqual(["\n\nb"]);
+    expect(await collect(parastream("\n\n"))).toEqual(["\n\n"]);
+    expect(await collect(parastream("\n\n", { includeDelimiter: false }))).toEqual([]);
+  });
+
   test("validates options with Zod", async () => {
     await expect(
       collect(parastream("text", { maxBuffer: 0 })),

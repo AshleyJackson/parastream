@@ -19,8 +19,24 @@ export type StreamTransport = z.infer<typeof streamTransportSchema>;
 export const normalizeStreamOptionsSchema = z.object({
   transport: streamTransportSchema.default("auto"),
   protocol: protocolHintSchema.default("auto"),
+  /** Maximum bytes of one SSE/NDJSON line; defaults to the parser limit. */
+  maxLineLength: z.number().int().positive().optional(),
+  /** Maximum size of one SSE event's combined data; SSE only. */
+  maxEventLength: z.number().int().positive().optional(),
   signal: abortSignalSchema.optional(),
 });
+
+interface TransportLimits {
+  maxLineLength?: number;
+  maxEventLength?: number;
+}
+
+function transportLimits(options: z.output<typeof normalizeStreamOptionsSchema>): TransportLimits {
+  const limits: TransportLimits = {};
+  if (options.maxLineLength !== undefined) limits.maxLineLength = options.maxLineLength;
+  if (options.maxEventLength !== undefined) limits.maxEventLength = options.maxEventLength;
+  return limits;
+}
 
 export type NormalizeStreamOptions = z.input<typeof normalizeStreamOptionsSchema>;
 
@@ -108,8 +124,15 @@ async function* decodeTransport(
   source: ChunkSource,
   transport: Exclude<StreamTransport, "auto">,
   protocol: ProtocolHint,
+  limits: TransportLimits,
 ): AsyncGenerator<NormalizedPart> {
   if (transport === "text") {
+    if (protocol !== "auto" && protocol !== "plain-text") {
+      throw new TypeError(
+        `Protocol hint "${protocol}" cannot be applied to a plain text stream; ` +
+          "use SSE or NDJSON transport for protocol events",
+      );
+    }
     for await (const text of decodeTextChunks(source)) {
       if (text.length > 0) yield makePlainTextPart(text);
     }
@@ -117,14 +140,16 @@ async function* decodeTransport(
   }
 
   if (transport === "ndjson") {
-    for await (const event of parseNDJSON(source)) {
+    for await (const event of parseNDJSON(source, limits)) {
       yield* normalizeResponseEvent(event, protocol);
     }
     return;
   }
 
-  for await (const frame of parseSSE(source)) {
+  for await (const frame of parseSSE(source, limits)) {
     if (frame.data.trim() === "[DONE]") return;
+    // Comment-only or empty data frames are spec-legal keep-alives.
+    if (frame.data.trim().length === 0) continue;
     if (protocol === "plain-text") {
       yield makePlainTextPart(frame.data);
       continue;
@@ -136,7 +161,16 @@ async function* decodeTransport(
     } catch {
       throw new SyntaxError(`Invalid JSON in SSE event "${frame.event ?? "(unnamed)"}"`);
     }
-    yield* normalizeResponseEvent(attachEventName(payload, frame.event), protocol);
+    const annotated = attachEventName(payload, frame.event);
+    if (annotated === payload) {
+      yield* normalizeResponseEvent(payload, protocol);
+      continue;
+    }
+    // The event name was attached for detection only; keep `raw` faithful
+    // to the provider payload.
+    for (const part of normalizeResponseEvent(annotated, protocol)) {
+      yield { ...part, raw: payload };
+    }
   }
 }
 
@@ -172,6 +206,8 @@ export async function* normalizeAIStream(
   const source = aiStreamSourceSchema.parse(inputSource);
   throwIfAborted(options.signal);
 
+  const limits = transportLimits(options);
+
   if (isResponse(source)) {
     if (source.body === null) return;
     const transport = resolveResponseTransport(
@@ -182,13 +218,19 @@ export async function* normalizeAIStream(
       sourceValues(source.body, options.signal),
       transport,
       options.protocol,
+      limits,
     );
     return;
   }
 
   if (typeof source === "string") {
     if (options.transport === "auto" || options.transport === "text") {
-      if (source.length > 0) yield makePlainTextPart(source);
+      yield* decodeTransport(
+        sourceValues(source, options.signal),
+        "text",
+        options.protocol,
+        limits,
+      );
       return;
     }
     if (options.transport === "sse" || options.transport === "ndjson") {
@@ -196,6 +238,7 @@ export async function* normalizeAIStream(
         sourceValues(source, options.signal),
         options.transport,
         options.protocol,
+        limits,
       );
     }
     return;
@@ -209,6 +252,7 @@ export async function* normalizeAIStream(
       sourceValues(source, options.signal),
       options.transport,
       options.protocol,
+      limits,
     );
     return;
   }
@@ -233,6 +277,7 @@ export async function* normalizeAIStream(
       replayFirst(firstValue, iterator),
       transport,
       options.protocol,
+      limits,
     );
     return;
   }

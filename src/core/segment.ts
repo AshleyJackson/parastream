@@ -114,9 +114,10 @@ function formatUnit(
   value: string,
   delimiter: string,
   options: z.output<typeof segmentOptionsSchema>,
+  carried = "",
 ): string {
   const text = options.trim ? value.trim() : value;
-  return options.includeDelimiter ? text + delimiter : text;
+  return options.includeDelimiter ? carried + text + delimiter : text;
 }
 
 export interface TextSegmenter {
@@ -128,10 +129,20 @@ export function createTextSegmenter(
   inputOptions: SegmentOptions = {},
 ): TextSegmenter {
   const options = segmentOptionsSchema.parse(inputOptions);
+  // Up to this many buffered code units can still turn out to be part of a
+  // delimiter rather than unit content, so they are not charged to the unit
+  // budget (max delimiter is 4 for paragraphs, 2 for lines).
+  const delimiterLookahead = options.unit === "paragraph" ? 3 : 1;
   let pieces: string[] = [];
   let pendingLength = 0;
   let tail = "";
+  let carried = "";
   let index = 0;
+
+  const exceedsBuffer = (): RangeError =>
+    new RangeError(
+      `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
+    );
 
   return {
     push(chunk: string): ParaChunk[] {
@@ -152,33 +163,42 @@ export function createTextSegmenter(
 
           const unitLength = pendingLength - delimiterLength;
           if (unitLength > options.maxBuffer) {
-            throw new RangeError(
-              `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
-            );
+            throw exceedsBuffer();
           }
 
           const full = pieces.join("");
           const unit = full.slice(0, unitLength);
           const delimiter = full.slice(unitLength);
+          pieces = [];
+          pendingLength = 0;
+          tail = "";
+          pieceStart = offset + 1;
+
+          if (unit.length === 0) {
+            // A boundary with no content is not a unit; keep its delimiter
+            // and fold it into the next unit instead of emitting an empty
+            // chunk.
+            carried += delimiter;
+            if (carried.length > options.maxBuffer) {
+              throw exceedsBuffer();
+            }
+            continue;
+          }
+
           output.push({
-            text: formatUnit(unit, delimiter, options),
+            text: formatUnit(unit, delimiter, options, carried),
             index,
             unit: options.unit,
             isFinal: false,
           });
           index += 1;
-          pieces = [];
-          pendingLength = 0;
-          tail = "";
-          pieceStart = offset + 1;
+          carried = "";
           continue;
         }
 
-        const currentLength = pendingLength + offset - pieceStart + 1;
-        if (currentLength > options.maxBuffer) {
-          throw new RangeError(
-            `Pending ${options.unit} exceeds maxBuffer (${options.maxBuffer} UTF-16 code units)`,
-          );
+        const currentLength = carried.length + pendingLength + offset - pieceStart + 1;
+        if (currentLength > options.maxBuffer + delimiterLookahead) {
+          throw exceedsBuffer();
         }
       }
 
@@ -191,16 +211,24 @@ export function createTextSegmenter(
       return output;
     },
     finish(): ParaChunk | undefined {
-      if (pendingLength === 0) return undefined;
+      const content = pieces.join("");
+      const hasPending = pendingLength > 0 || carried.length > 0;
+      if (pendingLength > options.maxBuffer || carried.length > options.maxBuffer) {
+        throw exceedsBuffer();
+      }
+      pieces = [];
+      pendingLength = 0;
+      tail = "";
+      if (!hasPending) return undefined;
+      const text = formatUnit(content, "", options, carried);
+      carried = "";
+      if (text.length === 0) return undefined;
       const chunk: ParaChunk = {
-        text: options.trim ? pieces.join("").trim() : pieces.join(""),
+        text,
         index,
         unit: options.unit,
         isFinal: true,
       };
-      pieces = [];
-      pendingLength = 0;
-      tail = "";
       index += 1;
       return chunk;
     },

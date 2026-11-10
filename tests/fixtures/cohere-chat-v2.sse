@@ -6,7 +6,7 @@ data: {"type":"content-delta","index":0,"delta":{"message":{"content":{"text":"H
 
 data: {"type":"content-end","index":0}
 
-data: {"type":"tool-call-start","index":0,"id":"tool_demo","tool_call":{"id":"tool_demo","type":"function","function":{"name":"lookup","arguments":""}}}
+data: {"type":"tool-call-start","index":0,"delta":{"message":{"tool_calls":{"id":"tool_demo","type":"function","function":{"name":"lookup","arguments":""}}}}}
 
 data: {"type":"tool-call-delta","index":0,"delta":{"message":{"tool_calls":{"function":{"arguments":"{\"query\":"}}}}}
 

@@ -1,8 +1,8 @@
 # Protocol fixtures
 
-These are synthetic, sanitized examples of documented streamed payload shapes, not recordings from live provider accounts. They contain no credentials or personal data. Fixtures were checked against the linked primary references on **2026-11-03**.
+These are synthetic, sanitized examples of documented streamed payload shapes, not recordings from live provider accounts. They contain no credentials or personal data. Fixtures were checked against the linked primary references on **2026-11-10**.
 
-The provider-fixture tests run each event stream through transport framing and normalization where that transport is supported. Bedrock fixtures contain SDK-decoded event objects, not the raw AWS EventStream wire format. Gemini fixtures use SSE framing; Ollama fixtures use NDJSON. Vercel AI SDK core parts are decoded objects, while UI parts use its SSE data-stream format.
+The provider-fixture tests run each event stream through transport framing and normalization where that transport is supported. Bedrock fixtures contain SDK-decoded event objects, not the raw AWS EventStream wire format. Gemini fixtures use SSE framing for `streamGenerateContent`; the newer Interactions API is a different family and has no fixture because it is not supported. Ollama fixtures use NDJSON. Vercel AI SDK core parts are decoded objects, while UI parts use its SSE data-stream format.
 
 | Fixture | Shape under test | Primary reference |
 |---|---|---|
