@@ -10,7 +10,8 @@ All automated tests belong under `tests/`. Do not put test files beside source m
 4. **Segmentation tests**: paragraph/line boundaries, delimiter preservation options, final flush, Unicode, arbitrary text chunking, and overflow behavior.
 5. **Cancellation tests**: abort signal, consumer cancellation, upstream `return()`/reader cancellation, and error cleanup.
 6. **Provider stream fixtures**: small, synthetic examples of documented provider payloads, stored under `tests/fixtures/`. Each fixture records its primary reference and review date. Tests cover OpenAI Chat Completions and Responses, Anthropic Messages, Gemini `streamGenerateContent`, Ollama chat/generate, Cohere Chat v2, decoded Bedrock ConverseStream SDK events, Vercel AI SDK core/UI streams, and Chat Completions-compatible Mistral, Azure OpenAI, and Hugging Face TGI.
-7. **Visual stream playback**: a deterministic, delayed mixed stream with short, medium, and long message responses. Only output-channel message text passes through paragraph segmentation; agent, tool, and non-output events render as soon as they arrive.
+7. **Message assembler tests**: interleaved text blocks, tool input JSON completion, `reset-step` checkpoint restoration, buffer limits with overflow, late delta tolerance, incomplete calls at EOF, and per-step isolation. These tests verify the push reducer, `consume()` adapter, and event ordering.
+8. **Visual stream playback**: a deterministic, delayed mixed stream with short, medium, and long message responses. Only output-channel message text passes through paragraph segmentation; agent, tool, and non-output events render as soon as they arrive.
 
 Families that are recognized but deliberately not normalized have no fixture claiming support. TGI's native token events and other unsupported shapes are covered as `unknown` where they appear at all; the Gemini Interactions API is documented as unsupported and is not fixture-backed.
 

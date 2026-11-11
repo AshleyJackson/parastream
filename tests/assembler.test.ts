@@ -190,4 +190,34 @@ describe("message assembler", () => {
     expect(state.text).toBe("ab");
     expect(state.truncated).toBe(false);
   });
+
+  test("late tool-input deltas are silently ignored after completion", async () => {
+    const late: string[] = [];
+    await consume([
+      { type: "tool-input-start", toolCallId: "id" },
+      { type: "tool-input-delta", toolCallId: "id", delta: "x" },
+      { type: "tool-input-end", toolCallId: "id" },
+      { type: "tool-input-delta", toolCallId: "id", delta: "late" },
+    ], { toolInput: ({ text }) => { late.push(text); } });
+    expect(late).toEqual(["x"]);
+  });
+
+  test("tool-call without input is reported incomplete when stream ends", async () => {
+    const failures: string[] = [];
+    await consume(
+      [{ type: "tool-call", toolCallId: "id", toolName: "f", protocol: "ai-sdk" }],
+      { toolInputError: ({ reason }) => { failures.push(reason); } },
+      { assembler: { toolInput: "json" } },
+    );
+    expect(failures).toEqual(["incomplete"]);
+  });
+
+  test("cancel leaves pending calls without completing", () => {
+    const assembler = createMessageAssembler();
+    assembler.push(normalizeResponseEvent({ type: "tool-input-start", toolCallId: "id" })[0] as NormalizedPart);
+    assembler.cancel();
+    expect(assembler.state.toolCalls[0]?.status).toBe("pending");
+    expect(assembler.state.toolCalls[0]?.inputText).toBe("");
+    expect(() => assembler.finish()).toThrow("closed");
+  });
 });
