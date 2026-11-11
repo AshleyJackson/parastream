@@ -58,7 +58,7 @@ Adapters map provider-specific event shapes into a small typed union:
 
 An event that carries recognized structure but no text becomes a `control` rather than an empty `text-delta`, so consumers never see zero-length text.
 
-Keep provider identifiers and useful block/item IDs where present: tool parts carry `toolCallId`, `toolName`, and `blockId` (the provider's tool-call id, name, and content-block/item index) so partial arguments from concurrent tool calls can be accumulated per call. A text segmenter consumes only the selected text channel. It must not merge text across distinct message/content blocks or reorder text around tool/control events.
+Keep provider identifiers and useful block/item IDs where present: tool parts carry `toolCallId`, `toolName`, and `blockId` (the provider's tool-call id, name, and content-block/item index) so partial arguments from concurrent tool calls can be accumulated per call. A text segmenter consumes only the selected text channel. It must not merge text across distinct message/content blocks or reorder text around tool/control events. A streaming tool-call input is assembled into complete input when the provider signals completion; a call without arguments is treated as complete with empty input.
 
 Controls are not all equivalent. Lifecycle and usage controls are informational, while an AI SDK `reset-step` invalidates parts already streamed for the current step. Parastream reports the event faithfully; a consumer that renders parts must decide how to apply it.
 

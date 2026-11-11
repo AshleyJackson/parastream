@@ -197,7 +197,7 @@ Paragraph boundaries are adjacent `\n\n`, `\n\r\n`, or `\r\n\r\n`. Line boundari
 
 A boundary with no content is not a unit: consecutive delimiters are folded into the next emitted unit's text (with `includeDelimiter: true`) so no empty chunks are produced. For example, `"a\n\n\n\nb"` segments to `["a\n\n", "\n\nb"]`.
 
-Defaults are lossless: `trim: false`, `includeDelimiter: true`. If delimiters are excluded or text is trimmed, exact reconstruction is not guaranteed. A residual unit is emitted on end-of-stream with `isFinal: true`; a stream ending immediately after a delimiter has no extra final chunk.
+Defaults are lossless: `trim: false`, `includeDelimiter: true`. If delimiters are excluded or text is trimmed, exact reconstruction is not guaranteed. A residual unit is emitted on end-of-stream with `isFinal: true`. When the last unit is followed by a delimiter run, the final chunk contains the delimiter; to avoid trailing delimiters in your output, use `includeDelimiter: false`. A stream ending immediately after a delimiter without any content still emits one final chunk with the delimiter prefix.
 
 Sentence, word, grapheme, custom splitter, and push controllers remain in the 0.0.1 development scope but are not implemented.
 

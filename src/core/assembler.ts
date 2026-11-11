@@ -221,7 +221,7 @@ export function createMessageAssembler(inputOptions: MessageAssemblerOptions = {
     if (part.kind === "tool-call" || part.kind === "tool-input-delta") {
       const call = getTool(part);
       if (part.kind === "tool-input-delta") {
-        if (ended.has(call) || (call.status !== "pending" && call.status !== "truncated")) throw new Error("Tool input received after completion");
+        if (ended.has(call) || (call.status !== "pending" && call.status !== "truncated")) return [];
         const text = appendInput(call, part.text);
         return text ? [{ type: "tool-input", text, toolCall: copyTool(call) }] : [];
       }

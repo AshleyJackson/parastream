@@ -356,8 +356,8 @@ See [protocol detection and support](docs/protocol-detection.md) for exact shape
 - Segmentation currently supports paragraphs and lines. Sentence, word, grapheme, and custom splitting are not implemented.
 - Transport parsing and normalized events do not provide a reconnect cursor, replay guarantee, or general duplicate-event suppression. The application owns reconnect and idempotency policy. SSE `id` and `retry` fields are reported on frames but not remembered.
 - Framing is deliberately lenient in two places: a `data: [DONE]` payload ends the stream for SSE and NDJSON alike, and an SSE frame still open at end of stream is flushed rather than discarded. A truncated stream can therefore surface one partial frame that a strict reader would drop.
-- A `text-delta` is append-only. A provider or application that sends replaceable text snapshots needs explicit replacement/removal handling; a snapshot cannot safely be converted to an append delta if earlier text may need to be retracted. The AI SDK's `reset-step` control is reported faithfully but not applied.
-- Tool arguments, reasoning, refusal, controls, and unknown events remain separate parts. Parastream does not assemble every tool lifecycle into an executable call.
+- A `text-delta` is append-only. A provider or application that sends replaceable text snapshots needs explicit replacement/removal handling; a snapshot cannot safely be converted to an append delta if earlier text may need to be retracted.
+- Tool arguments, reasoning, refusal, controls, and unknown events remain separate parts. Parastream does not assemble every tool lifecycle into an executable call, but `createMessageAssembler()` and `consume()` provide text buffers, tool-argument accumulation, JSON parsing, limits, and `reset-step` support for callers who want it.
 - Raw Bedrock EventStream, the Gemini Interactions API, native Hugging Face TGI token events, OpenAI's Responses WebSocket mode, and general socket, audio, and video protocols are outside the current scope.
 
 ## Potential future directions
@@ -365,7 +365,6 @@ See [protocol detection and support](docs/protocol-detection.md) for exact shape
 These are possible extensions, not commitments or current API:
 
 - Web `TransformStream` helpers for raw transport framing and provider-specific transforms.
-- Stateful helpers for tool-argument assembly, replay-aware event handling, and replaceable snapshot/correction events.
 - Sentence, word, grapheme, and caller-provided segmentation strategies.
 - Additional provider and SDK adapters backed by documented fixtures.
 - Typed audio/video and other multimodal stream parts.
