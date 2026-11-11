@@ -48,14 +48,14 @@ Supported today, at the level of documented event shapes:
 | Plain text (`text/plain`, `text/markdown`) | Each chunk is an output text delta |
 | Mistral, Azure OpenAI, TGI OpenAI-compatible endpoint, other compatible gateways | The shared Chat Completions adapter when the actual emitted chunks match `choices[].delta` |
 
-Recognized framing that Parastream deliberately does not normalize:
+Recognized framing that Paratoken deliberately does not normalize:
 
 | Source | Status |
 |---|---|
 | Gemini **Interactions API** SSE (`interaction.created`, `step.delta`, `interaction.completed`) | Not supported. Events carry `event_type`, not `type`, and have no `candidates` array, so they surface as `unknown` rather than being mistaken for Generate Content. |
 | Raw AWS EventStream binary framing | Not supported. Pass SDK-decoded ConverseStream event objects instead. |
 | Hugging Face TGI native `textGenerationStream` (`token.text`) | Not supported. Its OpenAI-compatible endpoint is. |
-| OpenAI Responses WebSocket mode | Not supported; Parastream reads byte or decoded-event streams, not sockets. |
+| OpenAI Responses WebSocket mode | Not supported; Paratoken reads byte or decoded-event streams, not sockets. |
 | AI SDK text stream protocol | Supported as plain text, since it is a text stream with no parts. |
 | Provider SDK token events for other vendors, audio/video session protocols | Not supported; unknown payloads are preserved, never searched recursively for text. |
 

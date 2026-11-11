@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeResponseEvent,
   normalizedPartSchema,
-  parastreamChunks,
+  paratokenChunks,
   type NormalizedPart,
   type ParaChunk,
 } from "../src/index.js";
@@ -177,11 +177,11 @@ describe("visual stream playback", () => {
     const startedAt = performance.now();
 
     process.stdout.write(
-      "\n\n=== Parastream visual stream test ===\nOnly output-message text is buffered to paragraph boundaries. Activity is printed as soon as it arrives.\n[response deltas buffered] ",
+      "\n\n=== Paratoken visual stream test ===\nOnly output-message text is buffered to paragraph boundaries. Activity is printed as soon as it arrives.\n[response deltas buffered] ",
     );
 
     const paragraphRenderer = (async () => {
-      for await (const chunk of parastreamChunks(queue, { unit: "paragraph" })) {
+      for await (const chunk of paratokenChunks(queue, { unit: "paragraph" })) {
         emittedParagraphs.push(chunk);
         renderedOrder.push(`paragraph:${chunk.index}`);
         renderParagraph(chunk, startedAt);

@@ -235,7 +235,7 @@ export function createTextSegmenter(
   };
 }
 
-export async function* parastreamChunks(
+export async function* paratokenChunks(
   inputSource: TextSource,
   inputOptions: SegmentOptions = {},
 ): AsyncGenerator<ParaChunk> {
@@ -252,11 +252,11 @@ export async function* parastreamChunks(
   if (finalChunk !== undefined) yield finalChunk;
 }
 
-export async function* parastream(
+export async function* paratoken(
   source: TextSource,
   options: SegmentOptions = {},
 ): AsyncGenerator<string> {
-  for await (const chunk of parastreamChunks(source, options)) {
+  for await (const chunk of paratokenChunks(source, options)) {
     yield chunk.text;
   }
 }

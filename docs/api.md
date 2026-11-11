@@ -7,7 +7,7 @@ This is the contract of the current source tree. It is not a stable semver promi
 `normalizeAIStream(source, options?)` yields `NormalizedPart` values:
 
 ```ts
-import { normalizeAIStream } from "parastream";
+import { normalizeAIStream } from "paratoken";
 
 for await (const part of normalizeAIStream(response)) {
   if (part.kind === "text-delta" && part.channel === "output") {
@@ -64,7 +64,7 @@ normalizeAIStream(source, {
 Whole streams are the usual entry point, but each layer is exported for gateways, adapters, and tests:
 
 ```ts
-import { detectResponseProtocol, identifyResponseProtocol, normalizeResponseEvent } from "parastream";
+import { detectResponseProtocol, identifyResponseProtocol, normalizeResponseEvent } from "paratoken";
 
 const family = detectResponseProtocol(event); // "openai-responses", "unknown", …
 const parts = normalizeResponseEvent(event); // NormalizedPart[]
@@ -154,7 +154,7 @@ AI SDK `start-step`/`step-start` takes a checkpoint; `reset-step` restores that 
 `normalizeAIReadableStream(source, options?)` exposes the same normalized parts as a `ReadableStream<NormalizedPart>` with a queue size of one. Cancelling it aborts the source iterator.
 
 ```ts
-import { partFilterTransform, segmentTextTransform, selectTextTransform } from "parastream";
+import { partFilterTransform, segmentTextTransform, selectTextTransform } from "paratoken";
 
 const paragraphs = normalizeAIReadableStream(response)
   .pipeThrough(partFilterTransform({ textChannels: ["output"] }))
@@ -170,12 +170,12 @@ const paragraphs = normalizeAIReadableStream(response)
 
 ## Segment text
 
-`parastream(source, options?)` segments text chunks. `parastreamChunks()` additionally supplies `index`, `unit`, and `isFinal`.
+`paratoken(source, options?)` segments text chunks. `paratokenChunks()` additionally supplies `index`, `unit`, and `isFinal`.
 
 ```ts
-import { parastream } from "parastream";
+import { paratoken } from "paratoken";
 
-for await (const paragraph of parastream(textDeltas, {
+for await (const paragraph of paratoken(textDeltas, {
   unit: "paragraph",
   includeDelimiter: false,
 })) {
@@ -208,7 +208,7 @@ Both stream-normalization and text-segmentation options accept an `AbortSignal`.
 The transport parsers are exported for callers that need frames without normalization:
 
 ```ts
-import { parseSSE, parseNDJSON, decodeTextChunks, sourceValues } from "parastream";
+import { parseSSE, parseNDJSON, decodeTextChunks, sourceValues } from "paratoken";
 
 for await (const frame of parseSSE(response.body!)) {
   // { data: string, event?: string, id?: string, retry?: number }

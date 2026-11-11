@@ -1,21 +1,21 @@
-# Parastream
+# Paratoken
 
-**Parastream 0.0.1** is an early-development, TypeScript-first ESM library for normalizing common AI response streams and splitting text deltas into useful units.
+**Paratoken 0.0.1** is an early-development, TypeScript-first ESM library for normalizing common AI response streams and splitting text deltas into useful units.
 
 It sits between an upstream provider or SDK and your application:
 
 ```text
 Provider / SDK
   -> SSE, NDJSON, plain text, or decoded events
-  -> Parastream transport framing and protocol normalization
+  -> Paratoken transport framing and protocol normalization
   -> typed text, tool-input, control, or unknown parts
   -> optional paragraph/line segmentation
   -> your UI, CLI, proxy, or agent runtime
 ```
 
-Parastream does **not** make provider requests, hold credentials, execute tools, run a proxy server, or define a downstream application protocol. You own those pieces and choose which normalized events to expose.
+Paratoken does **not** make provider requests, hold credentials, execute tools, run a proxy server, or define a downstream application protocol. You own those pieces and choose which normalized events to expose.
 
-> **Development status:** The API and protocol support may change. The package is currently marked `private` and is not published to npm. Import examples assume the package is linked or included in a workspace.
+> **Development status:** The API and protocol support may change between minor versions. This is a 0.x package: expect changes, pin an exact version, and read the [changelog notes in the docs](docs/README.md) after updates.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Parastream does **not** make provider requests, hold credentials, execute tools,
 Pass a `Response`, SDK event iterable, or supported stream source to `normalizeAIStream()`. The example endpoint must return a supported streaming content type, such as `text/event-stream`, NDJSON, or `text/plain`; an ordinary `application/json` response is not assumed to be a stream. Segment only the text channel your application intends to display:
 
 ```ts
-import { normalizeAIStream, parastream } from "parastream";
+import { normalizeAIStream, paratoken } from "paratoken";
 
 const response = await fetch("/api/generate");
 
@@ -42,19 +42,19 @@ async function* outputText() {
   }
 }
 
-for await (const paragraph of parastream(outputText())) {
+for await (const paragraph of paratoken(outputText())) {
   console.log(paragraph);
 }
 ```
 
-`normalizeAIStream()` separates output text from reasoning, refusal, partial tool input, tool-call markers, control events, and unknown events. `parastream()` receives only the output text selected by the caller.
+`normalizeAIStream()` separates output text from reasoning, refusal, partial tool input, tool-call markers, control events, and unknown events. `paratoken()` receives only the output text selected by the caller.
 
 ## Assemble a message
 
 For applications that need accumulated state and completed tool inputs, `consume()` normalizes and assembles a source, awaiting each handler before advancing:
 
 ```ts
-import { consume } from "parastream";
+import { consume } from "paratoken";
 
 const message = await consume(response, {
   text: ({ channel, text }) => { if (channel === "output") render(text); },
@@ -79,7 +79,7 @@ import {
   normalizeAIReadableStream,
   segmentTextTransform,
   selectTextTransform,
-} from "parastream";
+} from "paratoken";
 
 const paragraphs = normalizeAIReadableStream(response)
   // This is an explicit text-only projection.
@@ -99,10 +99,10 @@ The normalized source stream retains every part type, including tool input/calls
 
 ## Consume an upstream provider
 
-This server-side example calls the OpenAI Responses API directly. The `Response` content type selects SSE framing; Parastream recognizes the typed Responses events. Keep the API key on the server.
+This server-side example calls the OpenAI Responses API directly. The `Response` content type selects SSE framing; Paratoken recognizes the typed Responses events. Keep the API key on the server.
 
 ```ts
-import { normalizeAIStream } from "parastream";
+import { normalizeAIStream } from "paratoken";
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) throw new Error("Set OPENAI_API_KEY on the server");
@@ -132,7 +132,7 @@ for await (const part of normalizeAIStream(response, { signal: abort.signal })) 
   } else if (part.kind === "tool-input-delta") {
     // Keep partial arguments separate; they may not be valid JSON yet.
   } else if (part.kind === "tool-call") {
-    // Hand off to application logic; Parastream does not execute tools.
+    // Hand off to application logic; Paratoken does not execute tools.
   } else if (part.kind === "control") {
     // Handle finish, usage, or other recognized non-text events.
   }
@@ -194,7 +194,7 @@ for await (const part of normalizeAIStream(anthropicResponse, {
 A proxy can normalize an upstream provider and expose a simpler downstream response. This example forwards **output text only**, grouped into paragraphs. It reads one paragraph when the downstream stream pulls, propagates cancellation upstream, and returns provider errors without consuming their bodies.
 
 ```ts
-import { normalizeAIStream, parastream } from "parastream";
+import { normalizeAIStream, paratoken } from "paratoken";
 
 export async function handleChat(request: Request): Promise<Response> {
   const { prompt } = (await request.json()) as { prompt: string };
@@ -248,7 +248,7 @@ export async function handleChat(request: Request): Promise<Response> {
     }
   }
 
-  const paragraphs = parastream(outputText(), {
+  const paragraphs = paratoken(outputText(), {
     unit: "paragraph",
   })[Symbol.asyncIterator]();
   const encoder = new TextEncoder();
@@ -290,7 +290,7 @@ export async function handleChat(request: Request): Promise<Response> {
 The examples read secrets from `process.env`, as in Node.js or Bun. In an edge runtime such as Cloudflare Workers, read keys from that runtime's secret bindings instead.
 Production proxies should also authenticate callers, validate request bodies, and set appropriate rate and input-size limits; those application policies are outside this stream example.
 
-This is a **transforming** proxy, not a transparent relay: it intentionally drops tool, reasoning, refusal, usage, and other non-output events. If clients need those events, preserve the normalized part types in a downstream schema of your own rather than flattening everything to text. For a transparent proxy that does not inspect the body, pass `upstream.body` through directly and do not parse it with Parastream.
+This is a **transforming** proxy, not a transparent relay: it intentionally drops tool, reasoning, refusal, usage, and other non-output events. If clients need those events, preserve the normalized part types in a downstream schema of your own rather than flattening everything to text. For a transparent proxy that does not inspect the body, pass `upstream.body` through directly and do not parse it with Paratoken.
 
 Streaming depends on the whole path. Do not buffer the upstream with `response.text()` or `response.json()` before returning a response. Configure any reverse proxy or CDN in front of your handler to stream rather than aggregate chunks. The example uses a `ReadableStream` pull to apply backpressure and cancels the provider request when the downstream consumer disconnects.
 
@@ -300,7 +300,7 @@ Paragraph splitting recognizes adjacent LF/CRLF blank lines; line splitting reco
 
 ## Supported upstream shapes
 
-Parastream detects event payloads by their structure, not by model name:
+Paratoken detects event payloads by their structure, not by model name:
 
 | Upstream source | How to pass it |
 |---|---|
@@ -326,7 +326,7 @@ Supported protocol families:
 
 This is not a claim that every API or modality from those providers is supported. Known gaps:
 
-- **Gemini Interactions API** (`interaction.created`, `step.delta`, `interaction.completed`) is not normalized. Google recommends it for new projects, but its step envelopes carry `event_type` rather than `type`; Parastream reports those events as `unknown` rather than mistaking them for Generate Content.
+- **Gemini Interactions API** (`interaction.created`, `step.delta`, `interaction.completed`) is not normalized. Google recommends it for new projects, but its step envelopes carry `event_type` rather than `type`; Paratoken reports those events as `unknown` rather than mistaking them for Generate Content.
 - **Raw AWS EventStream** framing is not decoded. Bedrock support accepts SDK-decoded ConverseStream objects.
 - **Hugging Face TGI native `textGenerationStream`** token events are not recognized; use its OpenAI-compatible endpoint.
 - **OpenAI Responses WebSocket mode**, live audio/video sessions, and other socket or binary protocols are out of scope.
@@ -357,7 +357,7 @@ See [protocol detection and support](docs/protocol-detection.md) for exact shape
 - Transport parsing and normalized events do not provide a reconnect cursor, replay guarantee, or general duplicate-event suppression. The application owns reconnect and idempotency policy. SSE `id` and `retry` fields are reported on frames but not remembered.
 - Framing is deliberately lenient in two places: a `data: [DONE]` payload ends the stream for SSE and NDJSON alike, and an SSE frame still open at end of stream is flushed rather than discarded. A truncated stream can therefore surface one partial frame that a strict reader would drop.
 - A `text-delta` is append-only. A provider or application that sends replaceable text snapshots needs explicit replacement/removal handling; a snapshot cannot safely be converted to an append delta if earlier text may need to be retracted.
-- Tool arguments, reasoning, refusal, controls, and unknown events remain separate parts. Parastream does not assemble every tool lifecycle into an executable call, but `createMessageAssembler()` and `consume()` provide text buffers, tool-argument accumulation, JSON parsing, limits, and `reset-step` support for callers who want it.
+- Tool arguments, reasoning, refusal, controls, and unknown events remain separate parts. Paratoken does not assemble every tool lifecycle into an executable call, but `createMessageAssembler()` and `consume()` provide text buffers, tool-argument accumulation, JSON parsing, limits, and `reset-step` support for callers who want it.
 - Raw Bedrock EventStream, the Gemini Interactions API, native Hugging Face TGI token events, OpenAI's Responses WebSocket mode, and general socket, audio, and video protocols are outside the current scope.
 
 ## Potential future directions
