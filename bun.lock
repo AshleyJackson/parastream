@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "parastream",
+      "name": "paratoken",
       "dependencies": {
         "zod": "^4.4.3",
       },

@@ -12,9 +12,9 @@ Framing is the layer below protocol detection, so its rules are worth stating se
 
 Verified behavior: the stream is UTF-8 with at most one leading byte-order mark stripped; line endings may be CRLF, LF, or CR; a blank line dispatches the pending event; multiple `data` lines are joined with `\n`; `id` is ignored when it contains a NULL; `retry` must be ASCII digits; unknown fields are ignored; `event` defaults to `message`; a stream that ends mid-event discards the pending event.
 
-Parastream implements this framing with three deliberate differences, all visible to callers:
+Paratoken implements this framing with three deliberate differences, all visible to callers:
 
-1. **Pending event at end of stream.** The specification discards an event that is still open at end of stream. Parastream flushes it, so an upstream that closes immediately after the last `data` line without a trailing blank line still yields that event. Provider streams that end at the last chunk benefit from this; a truncated stream can therefore surface one partial frame that the specification would have dropped.
+1. **Pending event at end of stream.** The specification discards an event that is still open at end of stream. Paratoken flushes it, so an upstream that closes immediately after the last `data` line without a trailing blank line still yields that event. Provider streams that end at the last chunk benefit from this; a truncated stream can therefore surface one partial frame that the specification would have dropped.
 2. **`[DONE]` sentinel.** Not part of SSE. It is handled at the protocol layer as a terminator, matching OpenAI-compatible practice.
 3. **`id` and `retry` are reported, not remembered.** They are parsed and exposed on the frame but are not used to implement reconnect or replay, which remain application responsibilities.
 
@@ -24,7 +24,7 @@ An empty `data` field or a frame with no `data` field produces no normalized par
 
 Verified behavior: each JSON text is followed by `\n`, a parser must also accept `\r\n`, a parser may ignore empty lines if that is documented, unparsable input should produce an error, and the media type is `application/x-ndjson`. The specification has no termination sentinel.
 
-Parastream accepts `application/x-ndjson`, `application/ndjson`, and `application/jsonl`; ignores blank lines; parses a final line that has no trailing newline; raises a `SyntaxError` that names the line number for invalid JSON; and, as a documented extension, stops at a line containing only `[DONE]` because OpenAI-compatible proxies emit that sentinel over NDJSON too.
+Paratoken accepts `application/x-ndjson`, `application/ndjson`, and `application/jsonl`; ignores blank lines; parses a final line that has no trailing newline; raises a `SyntaxError` that names the line number for invalid JSON; and, as a documented extension, stops at a line containing only `[DONE]` because OpenAI-compatible proxies emit that sentinel over NDJSON too.
 
 ## Provider APIs
 
@@ -58,7 +58,7 @@ Reference: [streaming messages](https://docs.anthropic.com/en/docs/build-with-cl
 
 ### Google Gemini, Generate Content API
 
-`models.streamGenerateContent` returns the same `GenerateContentResponse` envelopes as the non-streaming call. With `?alt=sse` the response is SSE; without it the endpoint returns a JSON array of response objects, which is not a stream frame format Parastream accepts. Candidates carry `content.parts[]`, `finishReason`, `safetyRatings`, `citationMetadata`, and `index`. A part may hold `text`, `thought`, `thoughtSignature`, `functionCall` (`name`, `id`, `args`), `functionResponse`, `inlineData`, `executableCode`, `codeExecutionResult`, `toolCall`, or `toolResponse`. `promptFeedback.blockReason` reports a blocked prompt, and `usageMetadata` can arrive in a final chunk with no candidates. Finish reasons include `CONTINUATION` (with `continuationToken`), `MALFORMED_FUNCTION_CALL`, and `UNEXPECTED_TOOL_CALL`.
+`models.streamGenerateContent` returns the same `GenerateContentResponse` envelopes as the non-streaming call. With `?alt=sse` the response is SSE; without it the endpoint returns a JSON array of response objects, which is not a stream frame format Paratoken accepts. Candidates carry `content.parts[]`, `finishReason`, `safetyRatings`, `citationMetadata`, and `index`. A part may hold `text`, `thought`, `thoughtSignature`, `functionCall` (`name`, `id`, `args`), `functionResponse`, `inlineData`, `executableCode`, `codeExecutionResult`, `toolCall`, or `toolResponse`. `promptFeedback.blockReason` reports a blocked prompt, and `usageMetadata` can arrive in a final chunk with no candidates. Finish reasons include `CONTINUATION` (with `continuationToken`), `MALFORMED_FUNCTION_CALL`, and `UNEXPECTED_TOOL_CALL`.
 
 **Detection:** `candidates` with `content.parts`, candidate finish/safety metadata, an empty `candidates` array with `usageMetadata`, or `promptFeedback`. Parts marked `thought: true` go to the reasoning channel; `functionCall` parts become tool calls. Function arguments are complete objects, not incremental strings, so Generate Content has no tool-input delta.
 
@@ -68,7 +68,7 @@ Reference: [streamGenerateContent](https://ai.google.dev/api/generate-content#me
 
 Google now leads with the Interactions API, which is generally available and recommended for new projects; `generateContent` remains supported as the legacy interface. Interactions stream as SSE from `POST /v1beta/interactions` with `stream: true`, and the event flow is `interaction.created`, `interaction.status_update`, repeated step groups (`step.start`, `step.delta`*, `step.stop`), `interaction.completed`, and `error`, ending with `event: done` and `data: [DONE]`. Step types are `model_output`, `thought`, `function_call`, and server-side tool steps such as `google_search_call`. Delta types include `text`, `image`, `audio`, `thought_summary` (nested at `delta.content.text`), `thought_signature`, and `arguments_delta`.
 
-**Support status:** not supported. This is a different family from Generate Content: the payloads carry `event_type` rather than `type`, use step envelopes, and have no `candidates` array. Parastream reports those events as `unknown` instead of misclassifying them, and normalization of `arguments_delta` or `thought_summary` would need a dedicated adapter.
+**Support status:** not supported. This is a different family from Generate Content: the payloads carry `event_type` rather than `type`, use step envelopes, and have no `candidates` array. Paratoken reports those events as `unknown` instead of misclassifying them, and normalization of `arguments_delta` or `thought_summary` would need a dedicated adapter.
 
 References: [Interactions API](https://ai.google.dev/gemini-api/docs/interactions), [streaming interactions](https://ai.google.dev/gemini-api/docs/streaming).
 
@@ -118,7 +118,7 @@ The SDK has three distinct stream surfaces.
 
 - **Core model parts** from `streamText().stream`: `start`, `text-start`/`text-delta`/`text-end`, `reasoning-start`/`reasoning-delta`/`reasoning-end`, `reasoning-part-finish`, `tool-input-start`/`tool-input-delta`/`tool-input-end`, `tool-call`, `tool-result`, `source`, `file`, `reasoning-file`, `custom`, `start-step`/`finish-step`, `finish`, `error`, `abort`, `raw`, `ping`, and experimental `steering-message`.
 - **UI message data stream**: SSE carrying the header `x-vercel-ai-ui-message-stream: v1`. Parts are `start`, `text-start`/`text-delta`/`text-end`, the reasoning trio, `reasoning-file`, `source-url`, `source-document`, `file`, `custom`, `data-*`, `error` with `errorText`, `tool-input-start` (with optional `inputEncoding`), `tool-input-delta` with `inputTextDelta`, `tool-input-available`, `tool-approval-request`/`tool-approval-response`, `tool-output-available`/`tool-output-denied`, `steering-message`, `start-step`, `finish-step`, `reset-step`, `finish`, and `abort`, terminated by `data: [DONE]`.
-- **Text stream protocol**: plain text chunks only, which Parastream reads as plain text.
+- **Text stream protocol**: plain text chunks only, which Paratoken reads as plain text.
 
 **Detection:** the part `type` discriminant, after SSE framing for the UI protocol. Text, reasoning, refusal, and tool input are separated; lifecycle, step, source, file, data, approval, and error parts become controls. `reset-step` is recognized as a control because it invalidates earlier parts of the current message; a consumer that renders parts must act on it rather than treating it as a no-op.
 
@@ -128,7 +128,7 @@ One collision is unavoidable at the payload level: a bare `{"type":"ping"}` part
 
 ## Consumer-side and agent-app protocols
 
-A provider's response format is not the same thing as an application client's event protocol. The following source review checks how several agent applications consume, transform, and deliver streamed output. These are implementation examples, not protocols that Parastream automatically supports.
+A provider's response format is not the same thing as an application client's event protocol. The following source review checks how several agent applications consume, transform, and deliver streamed output. These are implementation examples, not protocols that Paratoken automatically supports.
 
 ### T3 Code and OpenCode
 

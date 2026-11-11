@@ -26,6 +26,6 @@ The part union is `text-delta` (with `channel` of `output`, `reasoning`, or `ref
 Two refinements follow from practice:
 
 - A recognized event that carries no text becomes a `control`, never an empty `text-delta`.
-- Some controls are not informational. The AI SDK `reset-step` part invalidates parts already emitted for the current step. Parastream's message assembler restores its checkpoint and emits `reset` with the restored state. A bare `reset-step` report is faithful; previously delivered events and external side effects cannot be automatically retracted.
+- Some controls are not informational. The AI SDK `reset-step` part invalidates parts already emitted for the current step. Paratoken's message assembler restores its checkpoint and emits `reset` with the restored state. A bare `reset-step` report is faithful; previously delivered events and external side effects cannot be automatically retracted.
 
 For applications that need accumulated state and completed tool inputs, `consume()` and `createMessageAssembler()` provide text buffers, tool-argument accumulation, JSON parsing, limits, and `reset-step` support.

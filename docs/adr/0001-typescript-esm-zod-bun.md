@@ -5,7 +5,7 @@
 
 ## Context
 
-Parastream needs a single predictable source format, runtime validation at provider boundaries, and local commands that match this repository’s Bun instructions.
+Paratoken needs a single predictable source format, runtime validation at provider boundaries, and local commands that match this repository’s Bun instructions.
 
 ## Decision
 

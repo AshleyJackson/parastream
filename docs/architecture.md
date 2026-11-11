@@ -1,6 +1,6 @@
 # Architecture
 
-Parastream separates the problem into four layers. A single provider adapter should not own transport decoding, protocol identification, and paragraph splitting at once.
+Paratoken separates the problem into four layers. A single provider adapter should not own transport decoding, protocol identification, and paragraph splitting at once.
 
 ```text
 Response / byte or string source
@@ -60,7 +60,7 @@ An event that carries recognized structure but no text becomes a `control` rathe
 
 Keep provider identifiers and useful block/item IDs where present: tool parts carry `toolCallId`, `toolName`, and `blockId` (the provider's tool-call id, name, and content-block/item index) so partial arguments from concurrent tool calls can be accumulated per call. A text segmenter consumes only the selected text channel. It must not merge text across distinct message/content blocks or reorder text around tool/control events. A streaming tool-call input is assembled into complete input when the provider signals completion; a call without arguments is treated as complete with empty input.
 
-Controls are not all equivalent. Lifecycle and usage controls are informational, while an AI SDK `reset-step` invalidates parts already streamed for the current step. Parastream reports the event faithfully; a consumer that renders parts must decide how to apply it.
+Controls are not all equivalent. Lifecycle and usage controls are informational, while an AI SDK `reset-step` invalidates parts already streamed for the current step. Paratoken reports the event faithfully; a consumer that renders parts must decide how to apply it.
 
 Zod schemas validate the fields the adapter reads and use passthrough behavior for forward compatibility. Strict validation of an entire provider object is brittle because providers can add optional fields and event types.
 

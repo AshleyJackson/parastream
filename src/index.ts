@@ -12,8 +12,8 @@ export {
 } from "./core/assembler.js";
 export { consume, type ConsumeHandlers, type ConsumeOptions } from "./consume.js";
 export {
-  parastream,
-  parastreamChunks,
+  paratoken,
+  paratokenChunks,
   segmentOptionsSchema,
   textSourceSchema,
   type ParaChunk,
